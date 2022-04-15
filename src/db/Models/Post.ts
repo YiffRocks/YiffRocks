@@ -3,6 +3,7 @@ import File from "./File";
 import PostVersion from "./PostVersion";
 import db from "..";
 import Util from "../../util/Util";
+import Config from "../../config";
 import { assert } from "tsafe";
 
 export interface PostData {
@@ -43,17 +44,6 @@ export type PostCreationData = PostCreationRequired & Partial<Omit<PostData, key
 
 export type Ratings =  typeof VALID_RATINGS[number];
 export type RatingLocks = typeof VALID_RATING_LOCKS[number];
-export enum Rating {
-	SAFE         = 0,
-	QUESTIONABLE = 1,
-	EXPLICIT     = 2
-}
-
-export enum RatingLockType {
-	MINIMUM = 0,
-	EXACT   = 1,
-	MAXIMUM = 2
-}
 
 export const PostFlags = {
 	PENDING:     1 << 0,
@@ -109,7 +99,7 @@ export default class Post implements PostData {
 		this.locked_tags = data.locked_tags ?? "";
 		this.sources = data.sources ?? "";
 		this.flags = data.flags ?? 0;
-		this.rating = data.rating ?? Rating.EXPLICIT;
+		this.rating = data.rating ?? "explicit";
 		this.rating_lock = data.rating_lock;
 		this.files = data.files ?? "";
 		this.parent = data.parent;
@@ -126,6 +116,12 @@ export default class Post implements PostData {
 		const [res] = await db.query<Array<PostData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
 		if (!res) return null;
 		return new Post(res);
+	}
+
+	static async getRevisionNumber(id: number) {
+		const res = await db.query<Array<{ revision: number; }>>(`SELECT revision FROM ${this.TABLE} WHERE id = ?`, [id]);
+		if (res.length === 0) return 1;
+		return res.map(r => r.revision).sort((a, b) => a - b)[res.length - 1];
 	}
 
 	static async create(data: PostCreationData) {
@@ -161,6 +157,50 @@ export default class Post implements PostData {
 
 	static async edit(id: number, data: Omit<Partial<PostData>, "id">) {
 		return Util.genericEdit(Post, this.TABLE, id, Util.removeUndefinedKV(data));
+	}
+
+	static async editAsUser(id: number, updater: number, data: Omit<Partial<PostData>, "id">): Promise<Post | null> {
+		const post = await Post.get(id);
+		assert(post !== null, "[Post#editAsUser]: failed to get post");
+		const v = await PostVersion.create({
+			post_id:         id,
+			updater,
+			revision:        (await Post.getRevisionNumber(id)) + 1,
+			sources:         data.sources || post.sources,
+			old_sources:     data.sources === undefined ? undefined : post.sources,
+			tags:            data.tags || post.tags,
+			old_tags:        data.tags === undefined ? undefined : post.tags,
+			locked_tags:     data.locked_tags || post.locked_tags,
+			old_locked_tags: data.locked_tags === undefined ? undefined : post.locked_tags,
+			rating:          data.rating || post.rating,
+			old_rating:      data.rating === undefined ? undefined : post.rating,
+			rating_lock:     data.rating_lock || post.rating_lock,
+			old_rating_lock: data.rating_lock === undefined ? undefined : post.rating_lock,
+			parent:          data.parent || post.parent,
+			old_parent:      data.parent === undefined ? undefined : post.parent,
+			description:     data.description || post.description,
+			old_description: data.description === undefined ? undefined : post.description,
+			title:           data.title || post.title,
+			old_title:       data.title === undefined ? undefined : post.title
+		}, false);
+
+		await post.edit({
+			...data,
+			version:  v.id,
+			versions: `${post.versions} ${v.id}`,
+			revision: v.revision
+		});
+
+		return Post.get(id);
+	}
+
+	async delete() {
+		return Post.delete(this.id);
+	}
+
+	async edit(data: Omit<Partial<PostData>, "id">) {
+		Object.assign(this, Util.removeUndefinedKV(data));
+		return Post.edit(this.id, data);
 	}
 
 	// flags
@@ -212,14 +252,17 @@ export default class Post implements PostData {
 		return true;
 	}
 
+	async getApprover() { return this.approver === null ? null : User.get(this.approver); }
+
+	// pools
+	get poolIDs() { return this.pools === null ? [] : this.pools.split(" ").map(c => Number(c)); }
+
+	// child & parent
 	// @TODO fix if possible, return post if fixed, null if not fixed
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	async fixChild(id: number) {
 		return Promise.resolve(null);
 	}
-
-	get poolIDs() { return this.pools === null ? [] : this.pools.split(" ").map(c => Number(c)); }
-	// @TODO get pools
 
 	get childPosts() { return this.childeren === null ? [] : this.childeren.split(" ").map(c => Number(c)); }
 	async getChildPosts() {
@@ -230,57 +273,18 @@ export default class Post implements PostData {
 		}))).filter(Boolean) as Array<Post>;
 	}
 
-	static async getRevisionNumber(id: number) {
-		const res = await db.query<Array<{ revision: number; }>>(`SELECT revision FROM ${this.TABLE} WHERE id = ?`, [id]);
-		if (res.length === 0) return 1;
-		return res.map(r => r.revision).sort((a, b) => a - b)[res.length - 1];
-	}
-
-	async edit(data: Omit<Partial<PostData>, "id">) {
-		Object.assign(this, Util.removeUndefinedKV(data));
-		return Post.edit(this.id, data);
-	}
-
-	static async editAsUser(id: number, updater: number, data: Omit<Partial<PostData>, "id">): Promise<Post | null> {
-		const post = await Post.get(id);
-		assert(post !== null, "[Post#editAsUser]: failed to get post");
-		const v = await PostVersion.create({
-			post_id:         id,
-			updater,
-			revision:        (await Post.getRevisionNumber(id)) + 1,
-			sources:         data.sources || post.sources,
-			old_sources:     data.sources === undefined ? undefined : post.sources,
-			tags:            data.tags || post.tags,
-			old_tags:        data.tags === undefined ? undefined : post.tags,
-			locked_tags:     data.locked_tags || post.locked_tags,
-			old_locked_tags: data.locked_tags === undefined ? undefined : post.locked_tags,
-			rating:          data.rating || post.rating,
-			old_rating:      data.rating === undefined ? undefined : post.rating,
-			rating_lock:     data.rating_lock || post.rating_lock,
-			old_rating_lock: data.rating_lock === undefined ? undefined : post.rating_lock,
-			parent:          data.parent || post.parent,
-			old_parent:      data.parent === undefined ? undefined : post.parent,
-			description:     data.description || post.description,
-			old_description: data.description === undefined ? undefined : post.description,
-			title:           data.title || post.title,
-			old_title:       data.title === undefined ? undefined : post.title
-		}, false);
-
-		await post.edit({
-			...data,
-			version:  v.id,
-			versions: `${post.versions} ${v.id}`,
-			revision: v.revision
-		});
-
-		return Post.get(id);
-	}
-
-	get editAsUser() { return Post.editAsUser.bind(Post, this.id); }
-
-	async getUploader() { return User.get(this.uploader); }
-	async getApprover() { return this.approver === null ? null : User.get(this.approver); }
+	// files
 	async getFiles() { return File.getFilesForPost(this.id); }
+
+	async addFile(data: Buffer, flags = 0) {
+		const files = await Config.storageManager.store(data, this.id, flags);
+		await this.edit({
+			files: `${this.files} ${files.join(" ")}`
+		});
+	}
+
+	// misc
+	async getUploader() { return User.get(this.uploader); }
 
 	async toJSON() {
 		return {

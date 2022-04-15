@@ -6,7 +6,7 @@ import LocalStorageManager from "../logic/storage/Local";
 import AWS from "aws-sdk";
 import { tmpdir } from "os";
 
-// override values that should be hidden in private.ts
+// put values that should be hidden in private.ts, you can either add a getter here that returns the super value, or just keep it entirely hidden
 
 export default class Config extends PrivateConfig {
 	static get isDevelopment() {

@@ -79,28 +79,6 @@ export default class PostVersion implements PostVersionData {
 		this.old_title       = data.old_title.trim();
 	}
 
-	get sourcesChanged() { return Boolean(this.old_sources && this.sources !== this.old_sources); }
-	get addedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).added : []; }
-	get removedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).removed : []; }
-
-	get tagsChanged() { return Boolean(this.old_tags && this.tags !== this.old_tags); }
-	get addedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).added : []; }
-	get removedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).removed : []; }
-
-	get lockedTagsChanged() { return Boolean(this.old_locked_tags && this.locked_tags !== this.old_locked_tags); }
-	get addedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).added : []; }
-	get removedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).removed : []; }
-
-	get ratingChanged() { return Boolean(this.old_rating && this.rating !== this.old_rating); }
-
-	get ratingLockChanged() { return Boolean(this.old_rating_lock && this.rating_lock !== this.old_rating_lock); }
-
-	get parentChanged() { return Boolean(this.old_parent && this.parent !== this.old_parent); }
-
-	get descriptionChanged() { return Boolean(this.old_description && this.description !== this.old_description); }
-
-	get titleChanged() { return Boolean(this.old_title && this.title !== this.old_title); }
-
 	static async get(id: number) {
 		const [res] = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
 		if (!res) return null;
@@ -114,12 +92,6 @@ export default class PostVersion implements PostVersionData {
 		return new PostVersion(res);
 	}
 
-	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
-	}
-
-
 	static async create(data: PostVersionCreationData, defer: true): Promise<number>;
 	static async create(data: PostVersionCreationData, defer?: false): Promise<PostVersion>;
 	static async create(data: PostVersionCreationData, defer = false) {
@@ -131,8 +103,34 @@ export default class PostVersion implements PostVersionData {
 		return createdObject;
 	}
 
+	static async delete(id: number) {
+		const res = await db.delete(this.TABLE, id);
+		return res.affectedRows > 0;
+	}
+
+
 	static async edit(id: number, data: Omit<Partial<PostVersionData>, "id">) {
 		return Util.genericEdit(PostVersion, this.TABLE, id, data);
+	}
+
+	get sourcesChanged() { return Boolean(this.old_sources && this.sources !== this.old_sources); }
+	get addedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).added : []; }
+	get removedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).removed : []; }
+	get tagsChanged() { return Boolean(this.old_tags && this.tags !== this.old_tags); }
+	get addedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).added : []; }
+	get removedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).removed : []; }
+
+	get lockedTagsChanged() { return Boolean(this.old_locked_tags && this.locked_tags !== this.old_locked_tags); }
+	get addedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).added : []; }
+	get removedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).removed : []; }
+	get ratingChanged() { return Boolean(this.old_rating && this.rating !== this.old_rating); }
+	get ratingLockChanged() { return Boolean(this.old_rating_lock && this.rating_lock !== this.old_rating_lock); }
+	get parentChanged() { return Boolean(this.old_parent && this.parent !== this.old_parent); }
+	get descriptionChanged() { return Boolean(this.old_description && this.description !== this.old_description); }
+	get titleChanged() { return Boolean(this.old_title && this.title !== this.old_title); }
+
+	async delete() {
+		return PostVersion.delete(this.id);
 	}
 
 	async edit(data: Omit<Partial<PostVersionData>, "id">) {

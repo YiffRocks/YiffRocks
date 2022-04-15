@@ -11,6 +11,14 @@ import { access, readFile, unlink, writeFile } from "fs/promises";
 
 export default class LocalStorageManager extends BaseStorageManager {
 	protected storageDir: string;
+	/**
+	 * Create an instance of LocalStorageManager
+	 *
+	 * @param storageDir - the base directory to store files in
+	 * @param publicURL - the url where public posts are served from
+	 * @param protectedURL - the url where protected (deleted, replacements) are served from
+	 * @param heirarchical - if files should be stored in a heirarchical path structure (XX/YY/XXYY(..)) - XX and YY being part of the file md5 (protected files will never be heirarchical)
+	 */
 	constructor(storageDir: string, publicURL: string, protectedURL: string, heirarchical = true) {
 		super(publicURL, protectedURL, heirarchical);
 		this.storageDir = storageDir;
@@ -29,81 +37,85 @@ export default class LocalStorageManager extends BaseStorageManager {
 					fileType.ext === "gif" ? "gif" :
 						fileType.ext === "mp4" ? "video" : null);
 		assert(type !== null, "unable to determine file type (internal)");
-		const privateType = parsedFlags.REPLACEMENT ? "replacements" : parsedFlags.DELETED ? "deleted" : null;
-		const isPrivate = parsedFlags.REPLACEMENT || parsedFlags.DELETED;
+		const protectionType = parsedFlags.REPLACEMENT ? "replacements" : parsedFlags.DELETED ? "deleted" : null;
+		const isProtected = parsedFlags.REPLACEMENT || parsedFlags.DELETED;
 		if (Config.allowedMimeTypes.includes(fileType.mime)) {
 			const j = await Jimp.read(data);
-			await writeFile(`${this.storageDir}/${this.key(isPrivate, privateType, hash, fileType.ext)}`, data);
+			await writeFile(`${this.storageDir}/${this.key(isProtected, protectionType, hash, fileType.ext)}`, data);
 			const file = await File.create({
-				post_id: postID,
-				md5:     hash,
-				type,
-				mime:    fileType.mime,
 				ext:     fileType.ext,
-				width:   j.bitmap.width,
+				flags,
 				height:  j.bitmap.height,
-				flags
+				md5:     hash,
+				mime:    fileType.mime,
+				post_id: postID,
+				type,
+				width:   j.bitmap.width
 			});
 			files.push(file);
 
 			if (fileType.mime === "image/png") {
 				const [info, jpeg] = await this.convertImage(j.clone(), "jpg");
 				const hashJpeg = Util.md5(jpeg);
-				await writeFile(`${this.storageDir}/${this.key(isPrivate, privateType, hashJpeg, "jpg")}`, data);
+				await writeFile(`${this.storageDir}/${this.key(isProtected, protectionType, hashJpeg, "jpg")}`, data);
 				const jpegFile = await File.create({
-					post_id: postID,
-					md5:     hashJpeg,
-					type,
-					mime:    fileType.mime,
-					ext:     "jpg",
-					width:   info.bitmap.width,
+					ext:     info.getExtension(),
+					flags,
 					height:  info.bitmap.height,
-					flags
+					md5:     hashJpeg,
+					mime:    info.getMIME(),
+					post_id: postID,
+					type,
+					width:   info.bitmap.width,
+					parent:  file.id
 				});
 				files.push(jpegFile);
 			} else if (fileType.mime === "image/jpeg") {
 				const [info, png] = await this.convertImage(j.clone(), "png");
 				const hashPng = Util.md5(png);
-				await writeFile(`${this.storageDir}/${this.key(isPrivate, privateType, hashPng, "png")}`, data);
+				await writeFile(`${this.storageDir}/${this.key(isProtected, protectionType, hashPng, "png")}`, data);
 				const jpegFile = await File.create({
-					post_id: postID,
-					md5:     hashPng,
-					type,
-					mime:    fileType.mime,
-					ext:     "png",
-					width:   info.bitmap.width,
+					ext:     info.getExtension(),
+					flags,
 					height:  info.bitmap.height,
-					flags
+					md5:     hashPng,
+					mime:    info.getMIME(),
+					post_id: postID,
+					type,
+					width:   info.bitmap.width,
+					parent:  file.id
 				});
 				files.push(jpegFile);
 			} else if (fileType.mime === "image/apng") {
 				const [infoJpeg, jpeg] = await this.convertImage(j.clone(), "jpg");
 				const hashJpeg = Util.md5(jpeg);
-				await writeFile(`${this.storageDir}/${this.key(isPrivate, privateType, hashJpeg, "jpg")}`, data);
+				await writeFile(`${this.storageDir}/${this.key(isProtected, protectionType, hashJpeg, infoJpeg.getExtension())}`, data);
 				const jpegFile = await File.create({
-					post_id: postID,
-					md5:     hashJpeg,
-					type,
-					mime:    fileType.mime,
-					ext:     "jpg",
-					width:   infoJpeg.bitmap.width,
+					ext:     infoJpeg.getExtension(),
+					flags,
 					height:  infoJpeg.bitmap.height,
-					flags
+					md5:     hashJpeg,
+					mime:    infoJpeg.getMIME(),
+					post_id: postID,
+					type,
+					width:   infoJpeg.bitmap.width,
+					parent:  file.id
 				});
 				files.push(jpegFile);
 
 				const [infoPng, png] = await this.convertImage(j.clone(), "png");
 				const hashPng = Util.md5(png);
-				await writeFile(`${this.storageDir}/${this.key(isPrivate, privateType, hashPng, "png")}`, data);
+				await writeFile(`${this.storageDir}/${this.key(isProtected, protectionType, hashPng, infoJpeg.getExtension())}`, data);
 				const pngFile = await File.create({
-					post_id: postID,
-					md5:     hashPng,
-					type,
-					mime:    fileType.mime,
-					ext:     "jpg",
-					width:   infoPng.bitmap.width,
+					ext:     infoPng.getExtension(),
+					flags,
 					height:  infoPng.bitmap.height,
-					flags
+					md5:     hashJpeg,
+					mime:    infoPng.getMIME(),
+					post_id: postID,
+					type,
+					width:   infoPng.bitmap.width,
+					parent:  file.id
 				});
 				files.push(pngFile);
 			} else throw new Error(`Unknown Image Type "${fileType.mime}"`);
@@ -117,7 +129,7 @@ export default class LocalStorageManager extends BaseStorageManager {
 	}
 
 	override async delete(file: File): Promise<boolean> {
-		const key = this.key(file.isPrivate, file.privateType, file.md5, file.ext);
+		const key = this.key(file.isProtected, file.protectionType, file.md5, file.ext);
 		const exists = await access(`${this.storageDir}/${key}`).then(() => true, () => false);
 		if (!exists) return false;
 		await unlink(`${this.storageDir}/${key}`);
@@ -132,7 +144,7 @@ export default class LocalStorageManager extends BaseStorageManager {
 			file = getFile;
 		} else file = fileOrID;
 		assert(file !== undefined, "failed to recognize a valid file.");
-		const key = this.key(file.isPrivate, file.privateType, file.md5, file.ext);
+		const key = this.key(file.isProtected, file.protectionType, file.md5, file.ext);
 		const exists = await access(`${this.storageDir}/${key}`).then(() => true, () => false);
 		if (!exists) return null;
 		return readFile(`${this.storageDir}/${key}`);

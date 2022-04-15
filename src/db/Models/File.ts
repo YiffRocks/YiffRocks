@@ -17,6 +17,8 @@ export interface FileData {
 	width: number;
 	height: number;
 	flags: number;
+	// the parent of this file, if not primary (typically conversions or previews)
+	parent: number;
 }
 export type FileCreationRequired = Pick<FileData, "post_id" | "md5" | "type" | "mime" | "ext" | "width" | "height">;
 export type FileCreationIgnored = "id" | "created_at" | "updated_at";
@@ -43,6 +45,7 @@ export default class File implements FileData {
 	width: number;
 	height: number;
 	flags: number;
+	parent: number;
 	constructor(data: FileData) {
 		this.id         = data.id;
 		this.created_at = data.created_at;
@@ -56,6 +59,7 @@ export default class File implements FileData {
 		this.width      = data.width;
 		this.height     = data.height;
 		this.flags      = data.flags;
+		this.parent     = data.parent;
 	}
 
 	static async get(id: number) {
@@ -87,6 +91,10 @@ export default class File implements FileData {
 		return Util.genericEdit(File, this.TABLE, id, data);
 	}
 
+	static async getFilesForPost(id: number) {
+		const res = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [id]);
+		return res.map(r => new File(r));
+	}
 	async edit(data: Omit<Partial<FileData>, "id">) {
 		Object.assign(this, Util.removeUndefinedKV(data));
 		return File.edit(this.id, data);
@@ -97,27 +105,23 @@ export default class File implements FileData {
 		return Object.entries(FileFlags).map(([key, value]) => ({ [key]: (this.flags & value) === value })).reduce((a, b) => ({ ...a, ...b }), {}) as Record<keyof typeof FileFlags, boolean>;
 	}
 
-	get isPrivate() {
+	get isProtected() {
 		return this.isReplacement || this.isDeleted;
 	}
 
 	get isPreview() { return Util.checkFlag(FileFlags.PREVIEW, this.flags); }
 	get isReplacement() { return Util.checkFlag(FileFlags.REPLACEMENT, this.flags); }
 	get isDeleted() { return Util.checkFlag(FileFlags.DELETED, this.flags); }
-	get privateType() { return this.isReplacement ? "replacements" : this.isDeleted ? "deleted" : null; }
+	get protectionType() { return this.isReplacement ? "replacements" : this.isDeleted ? "deleted" : null; }
 
 	get url() {
-		return Config.constructFileURL(this.isPrivate, this.privateType, this.md5, this.ext);
+		return Config.constructFileURL(this.isProtected, this.protectionType, this.md5, this.ext);
 	}
 
 	async getPost() {
 		return Post.get(this.post_id);
 	}
 
-	static async getFilesForPost(id: number) {
-		const res = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [id]);
-		return res.map(r => new File(r));
-	}
 
 	toJSON() {
 		return {
