@@ -79,7 +79,7 @@ export default class PostVersion implements PostVersionData {
 		this.old_title       = data.old_title.trim();
 	}
 
-	static async get(id: number) {
+	static async get(id: number | bigint) {
 		const [res] = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
 		if (!res) return null;
 		return new PostVersion(res);
@@ -96,20 +96,20 @@ export default class PostVersion implements PostVersionData {
 	static async create(data: PostVersionCreationData, defer?: false): Promise<PostVersion>;
 	static async create(data: PostVersionCreationData, defer = false) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data);
+		const res = await db.insert(this.TABLE, data, true);
 		if (defer) return res.insertId;
 		const createdObject = await this.get(res.insertId);
 		assert(createdObject !== null, "failed to create new post object");
 		return createdObject;
 	}
 
-	static async delete(id: number) {
+	static async delete(id: number | bigint) {
 		const res = await db.delete(this.TABLE, id);
 		return res.affectedRows > 0;
 	}
 
 
-	static async edit(id: number, data: Omit<Partial<PostVersionData>, "id">) {
+	static async edit(id: number | bigint, data: Omit<Partial<PostVersionData>, "id">) {
 		return Util.genericEdit(PostVersion, this.TABLE, id, data);
 	}
 

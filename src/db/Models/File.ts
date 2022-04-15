@@ -81,7 +81,7 @@ export default class File implements FileData {
 
 	static async create(data: FileCreationData) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data);
+		const res = await db.insert(this.TABLE, data, true);
 		const createdObject = await this.get(res.insertId);
 		assert(createdObject !== null, "failed to create new file object");
 		return createdObject;

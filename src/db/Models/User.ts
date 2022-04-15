@@ -1,3 +1,6 @@
+import Favorite from "./Favorite";
+import PostVote from "./PostVote";
+import Post from "./Post";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
@@ -33,7 +36,7 @@ interface UserData extends UserStats {
 	posts_per_page: number;
 	comment_threshold: number;
 	// internal
-	ip_addresses: string;
+	last_ip_address: string | null;
 }
 export type UserCreationRequired = Pick<UserData, "name">;
 export type UserCreationIgnored = "id" | "created_at" | "updated_at";
@@ -126,7 +129,7 @@ export default class User implements UserData {
 	/** the threshold under which to hide comments */
 	comment_threshold: number;
 	// internal
-	ip_addresses: string;
+	last_ip_address: string | null;
 	constructor(data: UserData) {
 		this.id = data.id;
 		this.name = data.name;
@@ -162,9 +165,49 @@ export default class User implements UserData {
 		this.posts_per_page = data.posts_per_page ?? 75;
 		this.comment_threshold = data.comment_threshold ?? 0;
 		// internal
-		this.ip_addresses = data.ip_addresses;
+		this.last_ip_address = data.last_ip_address;
 	}
 
+	static async get(id: number) {
+		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+		if (!res) return null;
+		return new User(res);
+	}
+
+	static async getByName(name: string) {
+		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [name]);
+		if (!res) return null;
+		return new User(res);
+	}
+
+	static async create(data: UserCreationData) {
+		Util.removeUndefinedKeys(data);
+		const res = await db.insert(this.TABLE, data, true);
+		const createdObject = await this.get(res.insertId);
+		assert(createdObject !== null, "failed to create new post object");
+		return createdObject;
+	}
+
+	static async delete(id: number) {
+		const res = await db.delete(this.TABLE, id);
+		return res.affectedRows > 0;
+	}
+
+	static async edit(id: number, data: Omit<Partial<UserData>, "id">) {
+		return Util.genericEdit(User, this.TABLE, id, data);
+	}
+
+	static async idToName(id: number) {
+		// @TODO caching
+		const [res] = await db.query<Array<{ name: string; }>>(`SELECT name FROM ${this.TABLE} WHERE id = ?`, [id]);
+		return !res ? null : res.name;
+	}
+
+	static async nameToID(name: string) {
+		// @TODO caching
+		const [res] = await db.query<Array<{ name: string; }>>(`SELECT id FROM ${this.TABLE} WHERE name = ?`, [name]);
+		return !res ? null : res.name;
+	}
 	// flags
 	get parsedFlags() {
 		return Object.entries(UserFlags).map(([key, value]) => ({ [key]: (this.flags & value) === value })).reduce((a, b) => ({ ...a, ...b }), {}) as Record<keyof typeof UserFlags, boolean>;
@@ -174,10 +217,12 @@ export default class User implements UserData {
 		return Object.entries(UserFlags).filter(([key]) => !(PrivateUserFlags as ReadonlyArray<string>).includes(key)).map(([key, value]) => ({ [key]: (this.flags & value) === value })).reduce((a, b) => ({ ...a, ...b }), {}) as Record<Exclude<keyof typeof UserFlags, typeof PrivateUserFlags[number]>, boolean>;
 	}
 
+
 	get isBanned() { return Util.checkFlag(UserFlags.BANNED, this.flags); }
 	get isSystemUser() { return Util.checkFlag(UserFlags.SYSTEM, this.flags); }
 	get isBotUser() { return Util.checkFlag(UserFlags.BOT, this.flags); }
 	get isApprover() { return Util.checkFlag(UserFlags.APPROVER, this.flags); }
+
 	get hasUnlimitedUploads() { return Util.checkFlag(UserFlags.UNLIMITED_UPLOADS, this.flags); }
 	get useGravatar() { return Util.checkFlag(UserFlags.USE_GRAVATAR, this.flags); }
 	get isFlaggingDisabled() { return Util.checkFlag(UserFlags.NO_FLAGGING, this.flags); }
@@ -208,16 +253,16 @@ export default class User implements UserData {
 		return Object.entries(UserSettings).map(([key, value]) => ({ [key]: (this.settings & value) === value })).reduce((a, b) => ({ ...a, ...b }), {}) as Record<keyof typeof UserSettings, boolean>;
 	}
 
-	get getHideAvatars() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getHideBlacklistedAvatars() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getCollapsedDescriptions() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getHideComments() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getEmailNotifications() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getPrivacyMode() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getAutocomplete() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getSafeMode() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getDisablePM() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
-	get getCompactUploader() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
+	get hideAvatars() { return Util.checkFlag(UserSettings.HIDE_AVATARS, this.settings); }
+	get hideBlacklistedAvatars() { return Util.checkFlag(UserSettings.HIDE_BLACKLISTED_AVATARS, this.settings); }
+	get collapsedDescriptions() { return Util.checkFlag(UserSettings.COLLAPSE_DESCRIPTIONS, this.settings); }
+	get hideComments() { return Util.checkFlag(UserSettings.HIDE_COMMENTS, this.settings); }
+	get emailNotifications() { return Util.checkFlag(UserSettings.EMAIL_NOTIFICATIONS, this.settings); }
+	get privacyMode() { return Util.checkFlag(UserSettings.PRIVACY_MODE, this.settings); }
+	get autocomplete() { return Util.checkFlag(UserSettings.AUTOCOMPLETE, this.settings); }
+	get safeMode() { return Util.checkFlag(UserSettings.SAFE_MODE, this.settings); }
+	get disablePM() { return Util.checkFlag(UserSettings.DISABLE_PM, this.settings); }
+	get compactUploaderE() { return Util.checkFlag(UserSettings.COMPACT_UPLOADER, this.settings); }
 	get getDefaultImageSize() { return this.default_image_size; }
 	get getTimezone() { return this.timezone; }
 	get getPostsPerPage() { return this.posts_per_page; }
@@ -268,15 +313,10 @@ export default class User implements UserData {
 	}
 
 	// other
-	get knownIPAddresses() {
-		return Array.from(new Set(this.ip_addresses.split(" ")));
-	}
-
 	async trackIPAddress(address: string) {
-		if (!this.knownIPAddresses.includes(address)) {
-			this.ip_addresses += ` ${address}`;
+		if (this.last_ip_address !== address) {
 			await this.edit({
-				ip_addresses: this.ip_addresses
+				last_ip_address: address
 			});
 		}
 	}
@@ -303,12 +343,10 @@ export default class User implements UserData {
 		return this[type];
 	}
 
-	get favoriteLimit() {
-		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 150_000;
-		else if (this.isLevelAtLeast(UserLevels.FORMER_STAFF)) return 100_000;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 75_000;
-		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 50_000;
-		else return 0;
+	async decrementStat(type: keyof UserStats) {
+		this[type] = this[type] - 1;
+		await this.edit({ [type]: this[type] });
+		return this[type];
 	}
 
 	get apiBurstLimit() {
@@ -344,52 +382,49 @@ export default class User implements UserData {
 		return this.parsedFlags.USE_GRAVATAR && this.gravatarHash !== null ? `https://gravatar.com/avatar/${this.gravatarHash}.jpg?d=identicon` : "";
 	}
 
-	static async get(id: number) {
-		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
-		if (!res) return null;
-		return new User(res);
-	}
-
-	static async getByName(name: string) {
-		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [name]);
-		if (!res) return null;
-		return new User(res);
-	}
-
-	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
-	}
-
-	static async create(data: UserCreationData) {
-		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data);
-		const createdObject = await this.get(res.insertId);
-		assert(createdObject !== null, "failed to create new post object");
-		return createdObject;
-	}
-
-	static async edit(id: number, data: Omit<Partial<UserData>, "id">) {
-		return Util.genericEdit(User, this.TABLE, id, data);
-	}
 
 	async edit(data: Omit<Partial<UserData>, "id">) {
 		Object.assign(this, Util.removeUndefinedKV(data));
 		return User.edit(this.id, data);
 	}
 
-
-	static async idToName(id: number) {
-		// @TODO caching
-		const [res] = await db.query<Array<{ name: string; }>>(`SELECT name FROM ${this.TABLE} WHERE id = ?`, [id]);
-		return !res ? null : res.name;
+	// favorites
+	get favoriteLimit() {
+		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 150_000;
+		else if (this.isLevelAtLeast(UserLevels.FORMER_STAFF)) return 100_000;
+		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 75_000;
+		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 50_000;
+		else return 0;
 	}
 
-	static async nameToID(name: string) {
-		// @TODO caching
-		const [res] = await db.query<Array<{ name: string; }>>(`SELECT id FROM ${this.TABLE} WHERE name = ?`, [name]);
-		return !res ? null : res.name;
+	async getFavorites() { return Favorite.getForUser(this.id); }
+
+	async addFavorite(id: number) {
+		const post = await Post.get(id);
+		assert(post !== null, "null post in addFavorite");
+		const prev = await Favorite.getByUserAndPost(this.id, id);
+		if (prev !== null) return null;
+		await post.incrementStat("favorite_count");
+		await this.incrementStat("favorite_count");
+		const fav = await Favorite.create({
+			user_id: this.id,
+			post_id: id
+		});
+		return fav;
 	}
+
+	async removeFavorite(id: number) {
+		const post = await Post.get(id);
+		assert(post !== null, "null post in removeFavorite");
+		const prev = await Favorite.getByUserAndPost(this.id, id);
+		if (prev === null) return false;
+		await post.decrementStat("favorite_count");
+		await this.decrementStat("favorite_count");
+		return Favorite.delete(prev.id);
+	}
+
+	async getPostVotes() { return PostVote.getForUser(this.id); }
+
 
 	toJSON(type?: "public" | "self") {
 		const publicInfo = {

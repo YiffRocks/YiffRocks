@@ -1,11 +1,16 @@
 import User from "./User";
 import File from "./File";
 import PostVersion from "./PostVersion";
+import PostVote from "./PostVote";
+import Favorite from "./Favorite";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
 import { assert } from "tsafe";
 
+export type PostStats = Record<
+"favorite_count" | "comment_count",
+number>;
 export interface PostData {
 	id: number;
 	uploader: number;
@@ -143,7 +148,7 @@ export default class Post implements PostData {
 			version:  v,
 			revision: 1,
 			versions: v.toString()
-		});
+		}, true);
 		const createdObject = await this.get(res.insertId);
 		assert(createdObject !== null, "failed to create new post object");
 		await PostVersion.edit(v, { post_id: createdObject.id });
@@ -283,8 +288,23 @@ export default class Post implements PostData {
 		});
 	}
 
+	// stats
+	async incrementStat(type: keyof PostStats) {
+		this[type] = this[type] + 1;
+		await this.edit({ [type]: this[type] });
+		return this[type];
+	}
+
+	async decrementStat(type: keyof PostStats) {
+		this[type] = this[type] - 1;
+		await this.edit({ [type]: this[type] });
+		return this[type];
+	}
+
 	// misc
 	async getUploader() { return User.get(this.uploader); }
+	async getFavorites() { return Favorite.getForPost(this.id); }
+	async getPostVotes() { return PostVote.getForPost(this.id); }
 
 	async toJSON() {
 		return {

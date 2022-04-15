@@ -1,5 +1,5 @@
 CREATE TABLE `posts` (
-	`id`              INT UNSIGNED                                           NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`id`              INT UNSIGNED                                           PRIMARY KEY AUTO_INCREMENT,
 	`uploader`        INT UNSIGNED                                           NOT NULL,
 	`approver`        INT UNSIGNED                                           NULL,
 	`created_at`      TIMESTAMP(3)                                           NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -37,5 +37,26 @@ CREATE TABLE `posts` (
 	INDEX         `rating`       (`rating`),
 	INDEX         `rating_lock`  (`rating_lock`),
 	INDEX         `parent`       (`parent`),
-	INDEX         `type`         (`type`)
-)
+	INDEX         `type`         (`type`),
+
+	-- Constraints
+	CONSTRAINT `fk_posts.uploader` FOREIGN KEY (`uploader`) REFERENCES `users`         (`id`),
+	CONSTRAINT `fk_posts.approver` FOREIGN KEY (`approver`) REFERENCES `users`         (`id`),
+	CONSTRAINT `fk_posts.version`  FOREIGN KEY (`version`) REFERENCES  `post_versions` (`id`),
+	CONSTRAINT `fk_posts.parent`   FOREIGN KEY (`parent`) REFERENCES   `posts`         (`id`)
+);
+
+-- Delayed Constraints
+ALTER TABLE `users`
+	ADD CONSTRAINT `fk_users.avatar_id` FOREIGN KEY (`avatar_id`)  REFERENCES `posts` (`id`);
+
+ALTER TABLE `favorites`
+	ADD CONSTRAINT `fk_favorites.post_id` FOREIGN KEY (`post_id`)  REFERENCES `posts` (`id`);
+
+ALTER TABLE `post_votes`
+	ADD CONSTRAINT `fk_post_votes.post_id` FOREIGN KEY (`post_id`)  REFERENCES `posts` (`id`);
+
+ALTER TABLE `post_versions`
+	ADD CONSTRAINT `fk_post_versions.post_id`    FOREIGN KEY (`post_id`)    REFERENCES `posts` (`id`),
+		CONSTRAINT `fk_post_versions.parent`     FOREIGN KEY (`parent`)     REFERENCES `posts` (`id`),
+		CONSTRAINT `fk_post_versions.old_parent` FOREIGN KEY (`old_parent`) REFERENCES `posts` (`id`);

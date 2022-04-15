@@ -1,5 +1,5 @@
 CREATE TABLE `files` (
-	`id`          INT UNSIGNED                                           NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`id`          INT UNSIGNED                                           PRIMARY KEY AUTO_INCREMENT,
 	`created_at`  TIMESTAMP(3)                                           NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	`updated_at`  TIMESTAMP(3)                                           NULL,
 	`post_id`     INT UNSIGNED                                           NOT NULL,
@@ -19,5 +19,8 @@ CREATE TABLE `files` (
 	INDEX         `ext`      (`ext`),
 	INDEX         `width`    (`width`),
 	INDEX         `height`   (`height`),
-	INDEX         `flags`    (`flags`)
+	INDEX         `flags`    (`flags`),
+
+	-- Constraints
+	CONSTRAINT `fk_files.post_id` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`)
 )

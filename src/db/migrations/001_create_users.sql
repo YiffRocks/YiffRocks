@@ -1,5 +1,5 @@
 CREATE TABLE `users` (
-	`id`                       INT UNSIGNED        NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`id`                       INT UNSIGNED        PRIMARY KEY AUTO_INCREMENT,
 	`name`                     TINYTEXT            NOT NULL,
 	`password`                 TINYTEXT            NULL,
 	`email`                    TINYTEXT            NULL,
@@ -36,7 +36,7 @@ CREATE TABLE `users` (
 	`posts_per_page`           SMALLINT UNSIGNED  NOT NULL DEFAULT 75,
 	`comment_threshold`        TINYINT            NOT NULL DEFAULT -10,
 	-- internal
-	`ip_addresses`             TEXT  NOT NULL DEFAULT '',
+	`last_ip_address`          VARCHAR(39)        NOT NULL DEFAULT '',
 
 	-- Indexes
 	UNIQUE INDEX  `id`                  (`id`),
@@ -45,5 +45,8 @@ CREATE TABLE `users` (
 	UNIQUE INDEX  `email_verification`  (`email_verification`),
 	-- should this (ip addresses) be made a table on its own for easier lookups?
 	INDEX         `ip_addresses`        (`ip_addresses`),
-	INDEX         `level`               (`level`)	
+	INDEX         `level`               (`level`)
+
+	-- Constraints
+	-- avatar_id constraint in 005_create_posts.sql
 )

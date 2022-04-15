@@ -4,6 +4,7 @@ import S3StorageManager from "../logic/storage/S3";
 import type BaseStorageManager from "../logic/storage/Base";
 import LocalStorageManager from "../logic/storage/Local";
 import AWS from "aws-sdk";
+import session from "express-session";
 import { tmpdir } from "os";
 
 // put values that should be hidden in private.ts, you can either add a getter here that returns the super value, or just keep it entirely hidden
@@ -124,4 +125,19 @@ export default class Config extends PrivateConfig {
 	// image proxy
 	static get proxyURL() { return super.proxyURL; }
 	static get proxyAuth() { return super.proxyAuth; }
+
+	static get sharedSession() {
+		return session({
+			name:   "yiff-rocks",
+			secret: this.cookieSecret,
+			cookie: {
+				maxAge:   8.64e7,
+				secure:   true,
+				httpOnly: true,
+				domain:   `.${this.apiPublicHost}`
+			},
+			resave:            false,
+			saveUninitialized: true
+		});
+	}
 }

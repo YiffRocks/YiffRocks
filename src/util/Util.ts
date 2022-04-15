@@ -1,4 +1,4 @@
-import type { TransformKeysToLowerCase } from "./types";
+import type { TransformKeysToLowerCase } from "./@types/types";
 import type { OkPacket } from "../db";
 import db from "../db";
 import type { FileData } from "../db/Models/File";
@@ -64,7 +64,7 @@ export default class Util {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	static async genericEdit<T extends { get(id: number): Promise<any>; }, D extends Record<string, unknown>>(type: T, table: string, id: number, data: D): Promise<boolean> {
+	static async genericEdit<T extends { get(id: number | bigint): Promise<any>; }, D extends Record<string, unknown>>(type: T, table: string, id: number | bigint, data: D): Promise<boolean> {
 		if (Object.hasOwn(data, "updated_at")) delete data.updated_at;
 		const keys = Object.keys(data);
 		const values = Object.values(data).filter(Boolean) ;

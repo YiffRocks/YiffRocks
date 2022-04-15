@@ -1,5 +1,5 @@
 CREATE TABLE `post_versions` (
-	`id`               INT UNSIGNED                              NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`id`               INT UNSIGNED                              PRIMARY KEY AUTO_INCREMENT,
 	`created_at`       TIMESTAMP(3)                              NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	-- this shouldn't practically be null but db limitations require it to be nullable
 	`post_id`          INT UNSIGNED                              NULL,
@@ -27,5 +27,9 @@ CREATE TABLE `post_versions` (
 	UNIQUE INDEX  `post_id_revision`  (`post_id`, `revision`),
 	INDEX         `post_id`           (`post_id`),
 	INDEX         `updater`           (`updater`),
-	INDEX         `revision`          (`revision`)
+	INDEX         `revision`          (`revision`),
+
+	-- Constraints
+    CONSTRAINT `fk_post_versions.updater` FOREIGN KEY (`updater`) REFERENCES `users` (`id`)
+	-- post_id, parent, old_parent constraints in 005_create_posts.sql
 )

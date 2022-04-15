@@ -1,4 +1,6 @@
 import Config from "../../config/index";
+import { UserLevels } from "../../db/Models/User";
+import Util from "../../util/Util";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 class APIError<T extends string | ((... args: Array<any>) => string)> extends Error {
@@ -44,7 +46,11 @@ export const GeneralErrors = {
 };
 
 export const UserErrors = {
-	INVALID: new APIError(1100, "The specified user does not exist.")
+	INVALID:               new APIError(1100, "The specified user does not exist."),
+	HIGHER_LEVEL_REQUIRED: new APIError(1101, (action: string, current: UserLevels, required: UserLevels) => `You do not have permission to ${action}. You are ${Util.normalizeConstant(UserLevels[current])}, and you need to be at least ${Util.normalizeConstant(UserLevels[required])}.`),
+	PRIVACY_MODE:          new APIError(1102, "This user has privacy mode enabled."),
+	ALREADY_FAVORITED:     new APIError(1103, "This post has already been favorited."),
+	NOT_FAVORITED:         new APIError(1104, "This post has not been favorited.")
 };
 
 export const PostErrors = {
@@ -54,12 +60,13 @@ export const PostErrors = {
 	MINIMUM_TAGS:          new APIError(1203, `You must have at least ${Config.minimumPostTags} tags.`),
 	MAXIMUM_TAGS:          new APIError(1204, `You cannot have more than ${Config.maximumPostTags} tags.`),
 	INVALID_RATING:        new APIError(1205, (rating: string) => `The rating "${rating}" is invalid.`),
-	INVALID_RATING_LOCK:   new APIError(1206, (rating_lock: string) => `The rating lock "${rating_lock}" is invalid.`),
+	INVALID_RATING_LOCK:   new APIError(1206, (ratingLock: string) => `The rating lock "${ratingLock}" is invalid.`),
 	INVALID_PARENT:        new APIError(1207, (parent: string) => `The parent "${parent}" is invalid.`),
 	INVALID_FILE_TYPE:     new APIError(1208, (mime: string) => `We don't accept "${mime}" files.`),
 	DUPLICATE_UPLOAD:      new APIError(1209, "A post already exists with that file."),
 	UPLOAD_NO_FILE_OR_URL: new APIError(1210, "You didn't upload a file or url..?"),
-	INVALID_SOURCE:        new APIError(1211, (source: string) => `The source "${source}" is invalid.`)
+	INVALID_SOURCE:        new APIError(1211, (source: string) => `The source "${source}" is invalid.`),
+	INVALID_VOTE_TYPE:     new APIError(1213, "You either provided no vote type, or it didn't match \"down\", \"none\" or \"up\".")
 };
 
 export const PostVersionErrors = {
