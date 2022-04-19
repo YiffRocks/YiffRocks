@@ -3,6 +3,7 @@ import pkg from "../../package.json";
 import S3StorageManager from "../logic/storage/S3";
 import type BaseStorageManager from "../logic/storage/Base";
 import LocalStorageManager from "../logic/storage/Local";
+import { TagCategories, TagRestrictions } from "../db/Models/Tag";
 import AWS from "aws-sdk";
 import session from "express-session";
 import { tmpdir } from "os";
@@ -95,8 +96,13 @@ export default class Config extends PrivateConfig {
 	static get bcryptRounds() { return 12; }
 
 	// limitations
-	static get minimumPostTags() { return 10; }
-	static get maximumPostTags() { return 250; }
+	static get minPostTags() { return 10; }
+	static get maxPostTags() { return 250; }
+	static get maxDescriptionLength() { return 5000; }
+	static get maxTitleLength() { return 100; }
+	static get maxSourceLength() { return 256; }
+	static get maxSources() { return 10; }
+	static get maxTotalSourcesLength() { return (this.maxSourceLength * this.maxSources) + 50; }
 
 	// services
 	// s3
@@ -139,5 +145,39 @@ export default class Config extends PrivateConfig {
 			resave:            false,
 			saveUninitialized: true
 		});
+	}
+
+	// tags
+	static get tagMap(): Array<{ id: number; retrictions: number; }> {
+		// naming is automatic, pascal case splitting by underscores
+		// TagRestrctions can be used for restrictions, a bitfield is expected
+		return [
+			{ id: TagCategories.GENERAL,   retrictions: 0 },
+			{ id: TagCategories.ARTIST,    retrictions: 0 },
+			{ id: TagCategories.COPYRIGHT, retrictions: 0 },
+			{ id: TagCategories.CHARACTER, retrictions: 0 },
+			{ id: TagCategories.SPECIES,   retrictions: 0 },
+			{ id: TagCategories.INVALID,   retrictions: TagRestrictions.RESTRICT_CREATE },
+			{ id: TagCategories.LORE,      retrictions: TagRestrictions.RESTRICT_CREATE },
+			{ id: TagCategories.META,      retrictions: TagRestrictions.RESTRICT_CREATE }
+		];
+	}
+
+	static get tagOrder() {
+		return [TagCategories.INVALID, TagCategories.ARTIST, TagCategories.COPYRIGHT, TagCategories.SPECIES, TagCategories.GENERAL, TagCategories.META, TagCategories.LORE];
+	}
+
+	// users
+	static get enableEmailVerification() {
+		return !this.isDevelopment;
+	}
+
+	static enableRegistrations() {
+		return true;
+	}
+
+	// regex
+	static get urlRegex() {
+		return /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/;
 	}
 }

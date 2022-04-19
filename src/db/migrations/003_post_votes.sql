@@ -5,7 +5,7 @@ CREATE TABLE `post_votes` (
 	`user_id`     INT UNSIGNED                NOT NULL,
 	`post_id`     INT UNSIGNED                NOT NULL,
 	`type`        ENUM('down', 'none', 'up')  NOT NULL DEFAULT 'none',
-	`ip_address`  VARCHAR(39)                 NOT NULL,
+	`ip_address`  VARCHAR(39)                 NULL,
 
 	-- Indexes
 	UNIQUE INDEX  `id`         (`id`),

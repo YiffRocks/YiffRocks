@@ -8,6 +8,10 @@ export interface OkPacket<T extends bigint | number = bigint> {
 	insertId: T;
 	warningStatus: number;
 }
+
+export type CountResult<T extends string = "*"> = Record<`COUNT(${T})`, bigint>;
+
+
 export default class db {
 	static pool: Pool;
 	static redis: Redis;

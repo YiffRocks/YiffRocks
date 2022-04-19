@@ -11,7 +11,7 @@ export interface PostVoteData {
 	user_id: number;
 	post_id: number;
 	type: "down" | "none" | "up";
-	ip_address: string;
+	ip_address: string | null;
 }
 export type PostVoteCreationRequired = Pick<PostVoteData, "user_id" | "post_id" | "type" | "ip_address">;
 export type PostVoteCreationIgnored = "id" | "created_at" | "updated_at";
@@ -25,7 +25,7 @@ export default class PostVote implements PostVoteData {
 	user_id: number;
 	post_id: number;
 	type: "down" | "none" | "up";
-	ip_address: string;
+	ip_address: string | null;
 	constructor(data: PostVoteData) {
 		this.id         = data.id;
 		this.created_at = data.created_at;
@@ -52,8 +52,8 @@ export default class PostVote implements PostVoteData {
 		return res.map(r => new PostVote(r));
 	}
 
-	static async getForPostAndUser(user: number, post: number) {
-		const [res] = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE user_id = ? AND post_id = ?`, [user, post]);
+	static async getForPostAndUser(post: number, user: number) {
+		const [res] = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ? AND user_id = ?`, [post, user]);
 		if (!res) return null;
 		return new PostVote(res);
 	}

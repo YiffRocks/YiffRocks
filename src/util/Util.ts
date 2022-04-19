@@ -75,4 +75,22 @@ export default class Util {
 	static md5(data: BinaryLike) {
 		return createHash("md5").update(data).digest("hex");
 	}
+
+	static enumEntries<T extends Record<string, unknown>>(value: T) {
+		return Object.entries(value).filter(([key]) => (!~~key && key !== "0"));
+	}
+
+	static enumValues<T extends Record<string, unknown>>(value: T) {
+		return this.enumEntries<T>(value).map(v => v[1]);
+	}
+
+	static enumKeys<T extends Record<string, unknown>>(value: T) {
+		return Object.keys(value).filter((key) => (!~~key && key !== "0"));
+	}
+
+	static parseBoolean(str: string, exact: true): boolean | null;
+	static parseBoolean(str: string, exact?: false): boolean;
+	static parseBoolean(str: string, exact = true) {
+		return ["true", "yes", "y"].includes(str) ? true : !exact ? false : ["false", "no", "n"].includes(str) ? false : null;
+	}
 }

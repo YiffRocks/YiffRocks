@@ -3,9 +3,11 @@ import File from "./File";
 import PostVersion from "./PostVersion";
 import PostVote from "./PostVote";
 import Favorite from "./Favorite";
+import Tag, { FunctionalMetaTags, TagCategories, TagCategoryNames } from "./Tag";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
+import TagNameValidator from "../../logic/TagNameValidator";
 import { assert } from "tsafe";
 
 export type PostStats = Record<
@@ -13,8 +15,8 @@ export type PostStats = Record<
 number>;
 export interface PostData {
 	id: number;
-	uploader: number;
-	approver: number | null;
+	uploader_id: number;
+	approver_id: number | null;
 	created_at: string;
 	updated_at: string | null;
 	/** overall version number, shared across all posts */
@@ -43,7 +45,7 @@ export interface PostData {
 	duration: number | null;
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
 }
-export type PostCreationRequired = Pick<PostData, "uploader">;
+export type PostCreationRequired = Pick<PostData, "uploader_id">;
 export type PostCreationIgnored = "id" | "created_at" | "updated_at" | "version" | "revision";
 export type PostCreationData = PostCreationRequired & Partial<Omit<PostData, keyof PostCreationRequired | PostCreationIgnored>>;
 
@@ -63,8 +65,8 @@ export const VALID_RATING_LOCKS = ["minimum", "exact", "maximum"] as const;
 export default class Post implements PostData {
 	static TABLE = "posts";
 	id: number;
-	uploader: number;
-	approver: number | null;
+	uploader_id: number;
+	approver_id: number | null;
 	created_at: string;
 	updated_at: string | null;
 	version: number;
@@ -90,8 +92,8 @@ export default class Post implements PostData {
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
 	constructor(data: PostData) {
 		this.id = data.id;
-		this.uploader = data.uploader;
-		this.approver = data.approver;
+		this.uploader_id = data.uploader_id;
+		this.approver_id = data.approver_id;
 		this.created_at = data.created_at;
 		this.updated_at = data.updated_at;
 		this.version = data.version;
@@ -129,19 +131,20 @@ export default class Post implements PostData {
 		return res.map(r => r.revision).sort((a, b) => a - b)[res.length - 1];
 	}
 
-	static async create(data: PostCreationData) {
+	static async create(data: PostCreationData, ip_address = null) {
 		Util.removeUndefinedKeys(data);
 		const v = await PostVersion.create({
-			updater:     data.uploader,
-			revision:    1,
-			sources:     data.sources,
-			tags:        data.tags,
-			locked_tags: data.locked_tags,
-			rating:      data.rating,
-			rating_lock: data.rating_lock,
-			parent:      data.parent,
-			description: data.description,
-			title:       data.title
+			updater_id:         data.uploader_id,
+			updater_ip_address: ip_address,
+			revision:           1,
+			sources:            data.sources,
+			tags:               data.tags,
+			locked_tags:        data.locked_tags,
+			rating:             data.rating,
+			rating_lock:        data.rating_lock,
+			parent:             data.parent,
+			description:        data.description,
+			title:              data.title
 		}, true);
 		const res = await db.insert(this.TABLE, {
 			...data,
@@ -164,12 +167,13 @@ export default class Post implements PostData {
 		return Util.genericEdit(Post, this.TABLE, id, Util.removeUndefinedKV(data));
 	}
 
-	static async editAsUser(id: number, updater: number, data: Omit<Partial<PostData>, "id">): Promise<Post | null> {
+	static async editAsUser(id: number, updater_id: number, updater_ip_address: string | null, data: Omit<Partial<PostData>, "id">) {
 		const post = await Post.get(id);
 		assert(post !== null, "[Post#editAsUser]: failed to get post");
 		const v = await PostVersion.create({
 			post_id:         id,
-			updater,
+			updater_id,
+			updater_ip_address,
 			revision:        (await Post.getRevisionNumber(id)) + 1,
 			sources:         data.sources || post.sources,
 			old_sources:     data.sources === undefined ? undefined : post.sources,
@@ -199,6 +203,144 @@ export default class Post implements PostData {
 		return Post.get(id);
 	}
 
+	static async vote(post: number, user: number, type: "down" | "none" | "up", ip_address: string | null = null) {
+		const currentVote = await PostVote.getForPostAndUser(post, user);
+		if (currentVote) {
+			if (currentVote.type === "none" && type === "none") return currentVote;
+			if (type === currentVote.type) type = "none";
+			const r = await currentVote.edit({ type, ip_address });
+			if (!r) process.emitWarning(`Post#vote modification changed 0 rows. (post: ${post}, user: ${user}, vote: ${currentVote.id} -  ${currentVote.type} -> ${type})`);
+			return currentVote;
+		} else {
+			return PostVote.create({
+				post_id: post,
+				user_id: user,
+				type,
+				ip_address
+			});
+		}
+	}
+
+	async setTags(user: User, ipAddress: string | null, data: string) {
+		const tags = data.split(" ");
+		const finalTags: Array<string> = [];
+		const errors: Array<string> = [];
+		let newRating: Post["rating"] | undefined;
+		let newRatingLock: Post["rating_lock"] | undefined;
+		for (const tag of tags) {
+			const [meta, name] = Tag.parseMetaTag(tag, [...FunctionalMetaTags, ...TagCategoryNames]);
+			const exists = await Tag.doesExist(name);
+			const validationCheck = TagNameValidator.validate(name);
+			if (validationCheck !== true) {
+				errors.push(...validationCheck.map(e => `${e} (${name})`));
+				continue;
+			}
+			if (meta) {
+				if (TagCategoryNames.includes(meta)) {
+					if (exists) {
+						errors.push(`Tag categories cannot be changed with a meta prefix if they already exist. (${name})`);
+						finalTags.push(name);
+						continue;
+					} else {
+						await Tag.create({
+							name,
+							category: TagCategories[meta as keyof typeof TagCategories]
+						});
+						finalTags.push(name);
+						continue;
+					}
+				} else {
+					if (FunctionalMetaTags.includes(meta)) {
+						switch (meta) {
+							// @TODO pools
+							case "pool": {
+								continue;
+							}
+							case "newpool": {
+								continue;
+							}
+
+							// @TODO post sets
+							case "set": {
+								continue;
+							}
+							case "newset": {
+								continue;
+							}
+
+							case "vote": {
+								if (!["down", "none", "up"].includes(name)) {
+									errors.push(`Invalid vote type "${name}" (${tag})`);
+									continue;
+								}
+								// yes, we're ignoring duplicate votes
+								await this.vote(user.id, name as "down" | "none" | "up");
+								continue;
+							}
+
+							case "fav": {
+								const parse = Util.parseBoolean(name, true);
+								if (parse === null) {
+									errors.push(`Invalid favorite value "${name}", looking for true/false. (${tag})`);
+								}
+								// yes, we're ignoring duplicate favorites
+								await user.addFavorite(this.id);
+								continue;
+							}
+
+							case "lock": case "locked": {
+								const rl = name as typeof VALID_RATING_LOCKS[number] | "none";
+								if (!user.isAtLeastPrivileged) {
+									errors.push("You cannot modify rating locks, you must be at least Privileged.");
+									continue;
+								} else {
+									if (![...VALID_RATING_LOCKS, "none"].includes(rl)) {
+										errors.push(`Invalid rating lock "${rl}", looking for ${VALID_RATING_LOCKS.join("/")}/none. (${tag})`);
+										continue;
+									}
+									newRatingLock = rl === "none" ? null : rl;
+									continue;
+								}
+							}
+
+							case "rating": {
+								const r = name as Post["rating"];
+								if (this.isRatingLocked) {
+									if (!user.isAtLeastPrivileged) {
+										errors.push(`This post is rating locked, and you cannot change it. (${tag})`);
+										continue;
+									} else {
+										if (!VALID_RATINGS.includes(r)) {
+											errors.push(`Invalid rating "${r}", looking for ${VALID_RATINGS.join("/")}. (${tag})`);
+											continue;
+										}
+									}
+								}
+
+								if (this.rating === r) continue;
+								else newRating = r;
+							}
+						}
+					} else {
+						errors.push(`Unknown error when parsing tag. (${tag})`);
+					}
+				}
+			} else {
+				if (!exists) await Tag.create({
+					name
+				});
+				finalTags.push(name);
+				continue;
+			}
+		}
+
+		await this.editAsUser(user.id, ipAddress, {
+			tags:        finalTags.join(" "),
+			rating:      newRating,
+			rating_lock: newRatingLock
+		});
+	}
+
 	async delete() {
 		return Post.delete(this.id);
 	}
@@ -206,6 +348,14 @@ export default class Post implements PostData {
 	async edit(data: Omit<Partial<PostData>, "id">) {
 		Object.assign(this, Util.removeUndefinedKV(data));
 		return Post.edit(this.id, data);
+	}
+
+	async editAsUser(updater: number, ipAddress: string | null, data: Omit<Partial<PostData>, "id">) {
+		return Post.editAsUser(this.id, updater, ipAddress, data);
+	}
+
+	async vote(user: number, type: "down" | "none" | "up") {
+		return Post.vote(this.id, user, type);
 	}
 
 	// flags
@@ -240,7 +390,7 @@ export default class Post implements PostData {
 	// approval
 	async approve(id: number) {
 		if (!this.isPending) return false;
-		if (this.approver !== null) {
+		if (this.approver_id !== null) {
 			await this.removeFlag(PostFlags.PENDING);
 			return false;
 		}
@@ -250,14 +400,14 @@ export default class Post implements PostData {
 		assert(user.isApprover, `user ${user.id} cannot approve posts in Post#approve`);
 
 		await this.edit({
-			flags:    this.flags - PostFlags.PENDING,
-			approver: id
+			flags:       this.flags - PostFlags.PENDING,
+			approver_id: id
 		});
 		await user.incrementStat("post_approval_count");
 		return true;
 	}
 
-	async getApprover() { return this.approver === null ? null : User.get(this.approver); }
+	async getApprover() { return this.approver_id === null ? null : User.get(this.approver_id); }
 
 	// pools
 	get poolIDs() { return this.pools === null ? [] : this.pools.split(" ").map(c => Number(c)); }
@@ -302,17 +452,17 @@ export default class Post implements PostData {
 	}
 
 	// misc
-	async getUploader() { return User.get(this.uploader); }
+	async getUploader() { return User.get(this.uploader_id); }
 	async getFavorites() { return Favorite.getForPost(this.id); }
 	async getPostVotes() { return PostVote.getForPost(this.id); }
 
 	async toJSON() {
 		return {
 			id:            this.id,
-			uploader:      this.uploader,
-			uploader_name: await User.idToName(this.uploader),
-			approver:      this.approver,
-			approver_name: this.approver === null ? null : await User.idToName(this.approver),
+			uploader_id:   this.uploader_id,
+			uploader_name: await User.idToName(this.uploader_id),
+			approver_id:   this.approver_id,
+			approver_name: this.approver_id === null ? null : await User.idToName(this.approver_id),
 			created_at:    this.created_at,
 			updated_at:    this.updated_at,
 			version:       this.version,

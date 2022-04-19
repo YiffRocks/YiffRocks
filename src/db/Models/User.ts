@@ -80,7 +80,7 @@ export enum UserLevels {
 	MEMBER    = 2,
 
 	// more advanced users
-	PRIVILIGED   = 10,
+	PRIVILEGED   = 10,
 	FORMER_STAFF = 11,
 
 	// staff
@@ -282,9 +282,9 @@ export default class User implements UserData {
 	get isMember() { return this.isLevel(UserLevels.MEMBER); }
 	get isAtMostMember() { return this.isLevelAtMost(UserLevels.MEMBER); }
 
-	get isAtLeastPriviliged() { return this.isLevelAtLeast(UserLevels.PRIVILIGED); }
-	get isPriviliged() { return this.isLevel(UserLevels.PRIVILIGED); }
-	get isAtMostPriviliged() { return this.isLevelAtMost(UserLevels.PRIVILIGED); }
+	get isAtLeastPrivileged() { return this.isLevelAtLeast(UserLevels.PRIVILEGED); }
+	get isPrivileged() { return this.isLevel(UserLevels.PRIVILEGED); }
+	get isAtMostPrivileged() { return this.isLevelAtMost(UserLevels.PRIVILEGED); }
 	get isAtLeastFormerStaff() { return this.isLevelAtLeast(UserLevels.FORMER_STAFF); }
 	get isFormerStaff() { return this.isLevel(UserLevels.FORMER_STAFF); }
 	get isAtMostFormerStaff() { return this.isLevelAtMost(UserLevels.FORMER_STAFF); }
@@ -351,7 +351,7 @@ export default class User implements UserData {
 
 	get apiBurstLimit() {
 		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 120;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 90;
+		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 90;
 		else return 60;
 	}
 
@@ -361,13 +361,13 @@ export default class User implements UserData {
 
 	get statementTimeout() {
 		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 9_000;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 6_000;
+		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 6_000;
 		else return 3_000;
 	}
 
 	get tagQueryLimit() {
 		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 60;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 50;
+		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 50;
 		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 40;
 		else return 20;
 	}
@@ -392,7 +392,7 @@ export default class User implements UserData {
 	get favoriteLimit() {
 		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 150_000;
 		else if (this.isLevelAtLeast(UserLevels.FORMER_STAFF)) return 100_000;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILIGED)) return 75_000;
+		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 75_000;
 		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 50_000;
 		else return 0;
 	}

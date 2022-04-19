@@ -6,7 +6,6 @@ import { GeneralErrors, PostErrors, UserErrors } from "../../logic/errors/API";
 import PostVersion from "../../db/Models/PostVersion";
 import Config from "../../config/index";
 import ProxyRequest from "../../util/ProxyRequest";
-import { urlRegex } from "../../logic/Regex";
 import Util from "../../util/Util";
 import File from "../../db/Models/File";
 import authCheck from "../../util/authCheck";
@@ -96,7 +95,7 @@ app.route("/upload")
 		let file: Buffer;
 		if (req.file) file = req.file.buffer;
 		else if (req.body.url) {
-			if (!urlRegex.test(req.body.url)) return res.status(400).json(GeneralErrors.INVALID_URL);
+			if (!Config.urlRegex.test(req.body.url)) return res.status(400).json(GeneralErrors.INVALID_URL);
 			const img = await ProxyRequest.get(req.body.url);
 			file = Buffer.from(await img.body.arrayBuffer());
 		} else return res.status(400).json(PostErrors.UPLOAD_NO_FILE_OR_URL);
@@ -107,11 +106,11 @@ app.route("/upload")
 		const exists = await File.getByMD5(hash);
 		if (exists !== null) return res.status(400).json(PostErrors.DUPLICATE_UPLOAD.withExtra({ post: exists.id }));
 
-		if (!req.body.tags || req.body.tags.split(" ").length === 0) return res.status(400).json(PostErrors.NO_TAGS);
-		const tags = req.body.tags.split(" ");
+		const tags = req.body.tags?.split(" ");
+		if (!tags || tags.length === 0) return res.status(400).json(PostErrors.NO_TAGS);
 		// @TODO maximum physical tag length so they can't just make tags with 100,000 characters
-		if (tags.length < Config.minimumPostTags) return res.status(400).json(PostErrors.MINIMUM_TAGS);
-		if (tags.length > Config.maximumPostTags) return res.status(400).json(PostErrors.MAXIMUM_TAGS);
+		if (tags.length < Config.minPostTags) return res.status(400).json(PostErrors.MINIMUM_TAGS);
+		if (tags.length > Config.maxPostTags) return res.status(400).json(PostErrors.MAXIMUM_TAGS);
 		// @TODO create tags, update tag categories, change aliases, apply implications
 
 		let sources: Array<string> = [];
@@ -119,11 +118,11 @@ app.route("/upload")
 			sources = req.body.sources.split("\n");
 			// @TODO maximum source length (individual & total)
 			sources.forEach(s => {
-				if (!urlRegex.test(s)) return res.status(400).json(PostErrors.INVALID_SOURCE.format(s));
+				if (!Config.urlRegex.test(s)) return res.status(400).json(PostErrors.INVALID_SOURCE.format(s));
 			});
 		}
 		if (!VALID_RATINGS.includes(req.body.rating)) return res.status(400).json(PostErrors.INVALID_RATING.format(req.body.rating));
-		if (req.body.rating_lock && !req.data.user.isAtLeastPriviliged) return res.status(403).json(UserErrors.HIGHER_LEVEL_REQUIRED.withExtra({ current: req.data.user.level, required: UserLevels.PRIVILIGED }, "use rating locks", req.data.user.level, UserLevels.PRIVILIGED));
+		if (req.body.rating_lock && !req.data.user.isAtLeastPrivileged) return res.status(403).json(UserErrors.HIGHER_LEVEL_REQUIRED.withExtra({ current: req.data.user.level, required: UserLevels.PRIVILEGED }, "use rating locks", req.data.user.level, UserLevels.PRIVILEGED));
 		if (req.body.rating_lock && !VALID_RATING_LOCKS.includes(req.body.rating_lock)) return res.status(400).json(PostErrors.INVALID_RATING_LOCK.format(req.body.rating_lock));
 		let parent: Post | null = null;
 		if (req.body.parent) {
@@ -135,15 +134,15 @@ app.route("/upload")
 			parent = parentPost;
 		}
 
-		if (req.body.upload_as_approved && !req.data.user.isApprover) return res.status(403).json(UserErrors.HIGHER_LEVEL_REQUIRED.withExtra({ current: req.data.user.level, required: UserLevels.PRIVILIGED }, "approve posts", req.data.user.level, UserLevels.PRIVILIGED));
+		if (req.body.upload_as_approved && !req.data.user.isApprover) return res.status(403).json(UserErrors.HIGHER_LEVEL_REQUIRED.withExtra({ current: req.data.user.level, required: UserLevels.PRIVILEGED }, "approve posts", req.data.user.level, UserLevels.PRIVILEGED));
 
 		// @TODO title & description max size
 
 		// @TODO parenting posts, set as parent on current post and tell other post it's a parent now
 		const post = await Post.create({
-			uploader: req.data.user.id,
-			tags:     req.body.tags,
-			sources:  [
+			uploader_id: req.data.user.id,
+			tags:        "",
+			sources:     [
 				...sources,
 				...(req.body.url ? [req.body.url] : [])
 			].join("\n"),
@@ -154,6 +153,7 @@ app.route("/upload")
 			description: req.body.description || "",
 			flags:       req.body.upload_as_approved ? 0 : PostFlags.PENDING
 		});
+		await post.setTags(req.data.user, req.ip, req.body.tags);
 		await req.data.user.incrementStat("upload_count");
 
 		return res.status(201).json(await post.toJSON());

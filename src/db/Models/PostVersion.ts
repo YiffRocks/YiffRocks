@@ -8,7 +8,8 @@ export interface PostVersionData {
 	created_at: string;
 	// this shouldn't practically be null but db limitations require it to be nullable
 	post_id: number | null;
-	updater: number;
+	updater_id: number;
+	updater_ip_address: string | null;
 	revision: number;
 	sources: string;
 	old_sources: string;
@@ -27,7 +28,7 @@ export interface PostVersionData {
 	title: string;
 	old_title: string;
 }
-export type PostVersionCreationRequired = Pick<PostVersionData, "updater">;
+export type PostVersionCreationRequired = Pick<PostVersionData, "updater_id" | "updater_ip_address">;
 export type PostVersionCreationIgnored = "id" | "created_at" | "updated_at";
 export type PostVersionCreationData = PostVersionCreationRequired & Partial<Omit<PostVersionData, keyof PostVersionCreationRequired | PostVersionCreationIgnored>>;
 
@@ -36,7 +37,8 @@ export default class PostVersion implements PostVersionData {
 	id: number;
 	created_at: string;
 	post_id: number;
-	updater: number;
+	updater_id: number;
+	updater_ip_address: string | null;
 	revision: number;
 	sources: string;
 	old_sources: string;
@@ -56,27 +58,28 @@ export default class PostVersion implements PostVersionData {
 	old_title: string;
 	constructor(data: PostVersionData) {
 		assert(data.post_id !== null, `received null post id in post version #${data.id}`);
-		this.id              = data.id;
-		this.created_at      = data.created_at;
-		this.post_id         = data.post_id;
-		this.updater         = data.updater;
-		this.revision        = data.revision;
-		this.sources         = data.sources.trim();
-		this.old_sources     = data.old_sources.trim();
-		this.tags            = data.tags.trim();
-		this.old_tags        = data.old_tags.trim();
-		this.locked_tags     = data.locked_tags.trim();
-		this.old_locked_tags = data.old_locked_tags.trim();
-		this.rating          = data.rating;
-		this.old_rating      = data.old_rating;
-		this.rating_lock     = data.rating_lock;
-		this.old_rating_lock = data.old_rating_lock;
-		this.parent          = data.parent;
-		this.old_parent      = data.old_parent;
-		this.description     = data.description.trim();
-		this.old_description = data.old_description.trim();
-		this.title           = data.title.trim();
-		this.old_title       = data.old_title.trim();
+		this.id                 = data.id;
+		this.created_at         = data.created_at;
+		this.post_id            = data.post_id;
+		this.updater_id         = data.updater_id;
+		this.updater_ip_address = data.updater_ip_address;
+		this.revision           = data.revision;
+		this.sources            = data.sources.trim();
+		this.old_sources        = data.old_sources.trim();
+		this.tags               = data.tags.trim();
+		this.old_tags           = data.old_tags.trim();
+		this.locked_tags        = data.locked_tags.trim();
+		this.old_locked_tags    = data.old_locked_tags.trim();
+		this.rating             = data.rating;
+		this.old_rating         = data.old_rating;
+		this.rating_lock        = data.rating_lock;
+		this.old_rating_lock    = data.old_rating_lock;
+		this.parent             = data.parent;
+		this.old_parent         = data.old_parent;
+		this.description        = data.description.trim();
+		this.old_description    = data.old_description.trim();
+		this.title              = data.title.trim();
+		this.old_title          = data.old_title.trim();
 	}
 
 	static async get(id: number | bigint) {
@@ -143,8 +146,8 @@ export default class PostVersion implements PostVersionData {
 		return {
 			id:              this.id,
 			post_id:         this.post_id,
-			updater:         this.updater,
-			updater_name:    await User.idToName(this.updater),
+			updater_id:      this.updater_id,
+			updater_name:    await User.idToName(this.updater_id),
 			revision:        this.revision,
 			sources_changed: this.sourcesChanged,
 			sources:         this.sources.split(" ").filter(Boolean),
