@@ -29,7 +29,7 @@ export interface PostVersionData {
 	old_title: string;
 }
 export type PostVersionCreationRequired = Pick<PostVersionData, "updater_id" | "updater_ip_address">;
-export type PostVersionCreationIgnored = "id" | "created_at" | "updated_at";
+export type PostVersionCreationIgnored = "id" | "created_at";
 export type PostVersionCreationData = PostVersionCreationRequired & Partial<Omit<PostVersionData, keyof PostVersionCreationRequired | PostVersionCreationIgnored>>;
 
 export default class PostVersion implements PostVersionData {
@@ -88,11 +88,15 @@ export default class PostVersion implements PostVersionData {
 		return new PostVersion(res);
 	}
 
-	static async getByPostAndRevision(post: number, revision: number) {
-
+	static async getForPostAndRevision(post: number, revision: number) {
 		const [res] = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ? AND revision = ?`, [post, revision]);
 		if (!res) return null;
 		return new PostVersion(res);
+	}
+
+	static async getForPost(post: number) {
+		const res = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [post]);
+		return res.map(p => new PostVersion(p));
 	}
 
 	static async create(data: PostVersionCreationData, defer: true): Promise<number>;

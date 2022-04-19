@@ -23,9 +23,12 @@ app
 
 		return next();
 	})
+	.use("/favorites", (await import("./routes/favorites")).default)
 	.use("/files", (await import("./routes/files")).default)
 	.use("/post_versions", (await import("./routes/post_versions")).default)
 	.use("/posts", (await import("./routes/posts")).default)
+	.use("/tag_versions", (await import("./routes/tag_versions")).default)
+	.use("/tags", (await import("./routes/tags")).default)
 	.use("/users", (await import("./routes/users")).default);
 
 

@@ -33,14 +33,24 @@ app.route("/:id")
 		return res.status(200).json(await post.toJSON());
 	});
 
-app.route("/:id/version/:revision")
+app.route("/:id/versions")
+	.all(apiHeaders(["OPTIONS", "GET"]))
+	.get(async(req, res) => {
+		const id = Number(req.params.id);
+		if (isNaN(id)) return res.status(400).json(GeneralErrors.INVALID_ID);
+		const versions = await PostVersion.getForPost(id);
+
+		return res.status(200).json(await Promise.all(versions.map(async(v) => v.toJSON())));
+	});
+
+app.route("/:id/versions/:revision")
 	.all(apiHeaders(["OPTIONS", "GET"]))
 	.get(async(req, res) => {
 		const id = Number(req.params.id);
 		if (isNaN(id)) return res.status(400).json(GeneralErrors.INVALID_ID);
 		const revision = Number(req.params.revision);
 		if (isNaN(revision)) return res.status(400).json(GeneralErrors.INVALID_ID);
-		const postVersion = await PostVersion.getByPostAndRevision(id, revision);
+		const postVersion = await PostVersion.getForPostAndRevision(id, revision);
 		if (postVersion === null) return res.status(404).json(PostErrors.INVALID_REVISION);
 
 		return res.status(200).json(await postVersion.toJSON());

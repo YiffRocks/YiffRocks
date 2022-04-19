@@ -71,9 +71,17 @@ export const PostErrors = {
 };
 
 export const PostVersionErrors = {
-	INVALID: new APIError(1300, "The specified post version does not exist.")
+	INVALID: new APIError(1250, "The specified post version does not exist.")
 };
 
 export const FileErrors = {
-	INVALID: new APIError(1400, "The specified file does not exist.")
+	INVALID: new APIError(1300, "The specified file does not exist.")
+};
+
+export const TagErrors = {
+	INVALID: new APIError(1400, "The specified tag does not exist.")
+};
+
+export const TagVersionErrors = {
+	INVALID: new APIError(1450, "The specified tag version does not exist.")
 };

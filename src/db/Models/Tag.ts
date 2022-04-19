@@ -141,7 +141,13 @@ export default class Tag implements TagData {
 
 	toJSON() {
 		return {
-			id: this.id
+			id:         this.id,
+			name:       this.name,
+			created_at: this.created_at,
+			updated_at: this.updated_at,
+			post_count: this.post_count,
+			category:   this.category,
+			locked:     this.locked
 		};
 	}
 }

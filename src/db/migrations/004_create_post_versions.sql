@@ -4,7 +4,7 @@ CREATE TABLE `post_versions` (
 	-- this shouldn't practically be null but db limitations require it to be nullable
 	`post_id`             INT UNSIGNED                              NULL,
 	`updater_id`          INT UNSIGNED                              NOT NULL,
-	`updater_ip_address`  VARCHAR(39)                               NOT NULL,
+	`updater_ip_address`  VARCHAR(39)                               NULL,
 	`revision`            INT UNSIGNED                              NOT NULL DEFAULT 1,
 	`sources`             TEXT                                      NOT NULL DEFAULT '',
 	`old_sources`         TEXT                                      NOT NULL DEFAULT '',
