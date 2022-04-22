@@ -29,9 +29,9 @@ export default class TagNameValidator {
 		// forbidden consecutive characters
 		if ((match = /([_\-~]{2,})/.exec(tag))) errors.push(`Tag cannot have consecutive ${!characterNames[match[1]] ? match[1] : `${characterNames[match[1]]} (${match[1]})`}`);
 		// meta tags
-		if ((match = new RegExp(`^(${MetaTags.join("|")}):(.+)$`).exec(tag))) errors.push(`Tag names start with ${match[1]}:`);
+		if ((match = new RegExp(`^(${MetaTags.join("|")}):(.+)$`).exec(tag))) errors.push(`Tag name cannot start with ${match[1]}:`);
 		// categories
-		if ((match = new RegExp(`^(${TagCategoryNames.map(k => k.toLowerCase()).join("|")}):(.+)$`).exec(tag))) errors.push(`Tag names start with ${match[1]}:`);
+		if ((match = new RegExp(`^(${TagCategoryNames.map(k => k.toLowerCase()).join("|")}):(.+)$`).exec(tag))) errors.push(`Tag name cannot start with ${match[1]}:`);
 
 		if (errors.length) return errors;
 		return true;

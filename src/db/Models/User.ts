@@ -14,7 +14,7 @@ export type UserStats = Record<
 "post_approval_count" | "upload_count" | "favorite_count" |
 "positive_feedback_count" | "neutral_feedback_count" | "negative_feedback_count",
 number>;
-interface UserData extends UserStats {
+export interface UserData extends UserStats {
 	id: number;
 	name: string;
 	password: string | null;
@@ -182,6 +182,7 @@ export default class User implements UserData {
 
 	static async create(data: UserCreationData) {
 		Util.removeUndefinedKeys(data);
+		if (!("flags" in data) && data.level && data.level >= UserLevels.JANITOR) data.flags = UserFlags.APPROVER;
 		const res = await db.insert(this.TABLE, data, true);
 		const createdObject = await this.get(res.insertId);
 		assert(createdObject !== null, "failed to create new post object");

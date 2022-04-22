@@ -16,7 +16,7 @@ app
 		else user = await User.get(n);
 		if (user === null) return res.status(404).json(UserErrors.INVALID);
 
-		return res.status(200).json(user.toJSON("self"));
+		return res.status(200).json(req.data.user?.id === user.id ? user.toJSON("self") : user.toJSON());
 	});
 
 export default app;

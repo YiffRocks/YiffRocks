@@ -3,6 +3,8 @@ import type { OkPacket } from "../db";
 import db from "../db";
 import type { FileData } from "../db/Models/File";
 import File from "../db/Models/File";
+import Config from "../config";
+import type User from "../db/Models/User";
 import type { BinaryLike } from "crypto";
 import { createHash } from "crypto";
 
@@ -60,7 +62,7 @@ export default class Util {
 	}
 
 	static removeUndefinedKV<T extends Record<string, unknown>>(data: T) {
-		return Object.entries(data).filter(([key, value]) => Boolean(key) && Boolean(value)).reduce((a, b) => ({ ...a, ...b }), {});
+		return Object.entries(data).filter(([key, value]) => Boolean(key) && Boolean(value)).map(([key, value]) => ({ [key]: value })).reduce((a, b) => ({ ...a, ...b }), {});
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,5 +94,27 @@ export default class Util {
 	static parseBoolean(str: string, exact?: false): boolean;
 	static parseBoolean(str: string, exact = true) {
 		return ["true", "yes", "y"].includes(str) ? true : !exact ? false : ["false", "no", "n"].includes(str) ? false : null;
+	}
+
+	static parseWildcards(str: string) {
+		return str.replace(/%/g, "\\%").replace(Config.wildcardCharacterRegex, "%");
+	}
+
+	static parseLimit(limit?: string | number, page: number | string = 1, user?: User): [limit: number, offset: number] {
+		if (typeof limit !== "number") limit = Number(limit);
+		if (isNaN(limit)) limit = user?.posts_per_page || Config.defaultPostLimit;
+		if (limit < Config.minPostLimit) limit = Config.minPostLimit;
+		if (limit > Config.maxPostLimit) limit = Config.maxPostLimit;
+
+		let offset = 0;
+		if (typeof page === "string") {
+			const [,type,num] = /^(a|b)(\d+)$/.exec(page) || [];
+			switch (type) {
+				case "a": offset = Number(num); break;
+				case "b": offset = Number(num) - limit; break;
+			}
+		} else offset = (page - 1) * limit;
+
+		return [limit, offset];
 	}
 }

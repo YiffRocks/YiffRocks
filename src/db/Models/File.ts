@@ -10,7 +10,8 @@ export interface FileData {
 	updated_at: string;
 	post_id: number;
 	md5: string;
-	primary: boolean;
+	// primary is reserved in sql
+	is_primary: boolean;
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
 	mime: string;
 	ext: string;
@@ -18,7 +19,7 @@ export interface FileData {
 	height: number;
 	flags: number;
 	// the parent of this file, if not primary (typically conversions or previews)
-	parent: number;
+	parent_id: number;
 }
 export type FileCreationRequired = Pick<FileData, "post_id" | "md5" | "type" | "mime" | "ext" | "width" | "height">;
 export type FileCreationIgnored = "id" | "created_at" | "updated_at";
@@ -38,28 +39,28 @@ export default class File implements FileData {
 	updated_at: string;
 	post_id: number;
 	md5: string;
-	primary: boolean;
+	is_primary: boolean;
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
 	mime: string;
 	ext: string;
 	width: number;
 	height: number;
 	flags: number;
-	parent: number;
+	parent_id: number;
 	constructor(data: FileData) {
 		this.id         = data.id;
 		this.created_at = data.created_at;
 		this.updated_at = data.updated_at;
 		this.post_id    = data.post_id;
 		this.md5        = data.md5;
-		this.primary    = data.primary;
+		this.is_primary = Boolean(data.is_primary);
 		this.type       = data.type;
 		this.mime       = data.mime;
 		this.ext        = data.ext;
 		this.width      = data.width;
 		this.height     = data.height;
 		this.flags      = data.flags;
-		this.parent     = data.parent;
+		this.parent_id  = data.parent_id;
 	}
 
 	static async get(id: number) {
@@ -70,6 +71,7 @@ export default class File implements FileData {
 
 	static async getByMD5(md5: string) {
 		const [res] = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE md5 = ?`, [md5]);
+		console.log(res);
 		if (!res) return null;
 		return new File(res);
 	}
@@ -125,16 +127,18 @@ export default class File implements FileData {
 
 	toJSON() {
 		return {
-			id:      this.id,
-			post_id: this.post_id,
-			md5:     this.md5,
-			primary: this.primary,
-			type:    this.type,
-			mime:    this.mime,
-			ext:     this.ext,
-			width:   this.width,
-			height:  this.height,
-			file:    Util.lowercaseKeys(this.parsedFlags)
+			id:        this.id,
+			post_id:   this.post_id,
+			parent_id: this.parent_id,
+			md5:       this.md5,
+			primary:   this.is_primary,
+			type:      this.type,
+			mime:      this.mime,
+			ext:       this.ext,
+			width:     this.width,
+			height:    this.height,
+			flags:     Util.lowercaseKeys(this.parsedFlags),
+			url:       this.url
 		};
 	}
 }

@@ -20,7 +20,7 @@ CREATE TABLE `users` (
 	`note_change_count`        MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
 	`pool_change_count`        MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
 	`post_change_count`        MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
-	`post_approvals_count`     MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
+	`post_approval_count`      MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
 	`upload_count`             MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
 	`favorite_count`           MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
 	`positive_feedback_count`  MEDIUMINT UNSIGNED  NOT NULL DEFAULT 0,
@@ -43,8 +43,8 @@ CREATE TABLE `users` (
 	UNIQUE INDEX  `name`                (`name`),
 	UNIQUE INDEX  `email`               (`email`),
 	UNIQUE INDEX  `email_verification`  (`email_verification`),
-	-- should this (ip addresses) be made a table on its own for easier lookups?
-	INDEX         `ip_addresses`        (`ip_addresses`),
+	-- should we make a table associating users and their actions to their previous ip addresses?
+	INDEX         `last_ip_address`     (`last_ip_address`),
 	INDEX         `level`               (`level`)
 
 	-- Constraints

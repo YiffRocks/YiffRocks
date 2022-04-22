@@ -1,7 +1,7 @@
 CREATE TABLE `posts` (
 	`id`                   INT UNSIGNED                                           PRIMARY KEY AUTO_INCREMENT,
 	`uploader_id`          INT UNSIGNED                                           NOT NULL,
-	`uploader_ip_address`  VARCHAR(39)                                            NOT NULL,
+	`uploader_ip_address`  VARCHAR(39)                                            NULL,
 	`approver_id`          INT UNSIGNED                                           NULL,
 	`created_at`           TIMESTAMP(3)                                           NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	`updated_at`           TIMESTAMP(3)                                           NULL,
@@ -19,7 +19,7 @@ CREATE TABLE `posts` (
 	`rating`               ENUM('safe', 'questionable', 'explicit')               NOT NULL DEFAULT 'explicit',
 	`rating_lock`          ENUM('minimum', 'exact', 'maximum')                    NULL,
 	`files`                TEXT                                                   NOT NULL DEFAULT '',
-	`parent`               INT UNSIGNED                                           NULL,
+	`parent_id`            INT UNSIGNED                                           NULL,
 	`childeren`            TEXT                                                   NULL,
 	`pools`                TEXT                                                   NULL,
 	`description`          TEXT                                                   NOT NULL DEFAULT '',
@@ -32,20 +32,20 @@ CREATE TABLE `posts` (
 	UNIQUE INDEX  `id`                   (`id`),
 	UNIQUE INDEX  `id_revision`          (`id`, `revision`),
 	INDEX         `uploader_id`          (`uploader_id`),
-	INDEX         `uploader_ip_address`  (`uploader_ip_address`)
-	INDEX         `approver`             (`approver`),
+	INDEX         `uploader_ip_address`  (`uploader_ip_address`),
+	INDEX         `approver_id`          (`approver_id`),
 	INDEX         `version`              (`version`),
 	INDEX         `flags`                (`flags`),
 	INDEX         `rating`               (`rating`),
 	INDEX         `rating_lock`          (`rating_lock`),
-	INDEX         `parent`               (`parent`),
+	INDEX         `parent_id`            (`parent_id`),
 	INDEX         `type`                 (`type`),
 
 	-- Constraints
-	CONSTRAINT `fk_posts.uploader` FOREIGN KEY (`uploader`) REFERENCES `users`         (`id`),
-	CONSTRAINT `fk_posts.approver` FOREIGN KEY (`approver`) REFERENCES `users`         (`id`),
-	CONSTRAINT `fk_posts.version`  FOREIGN KEY (`version`) REFERENCES  `post_versions` (`id`),
-	CONSTRAINT `fk_posts.parent`   FOREIGN KEY (`parent`) REFERENCES   `posts`         (`id`)
+	CONSTRAINT `fk_posts.uploader_id` FOREIGN KEY (`uploader_id`) REFERENCES `users`         (`id`),
+	CONSTRAINT `fk_posts.approver_id` FOREIGN KEY (`approver_id`) REFERENCES `users`         (`id`),
+	CONSTRAINT `fk_posts.version`     FOREIGN KEY (`version`)     REFERENCES `post_versions` (`id`),
+	CONSTRAINT `fk_posts.parent_id`   FOREIGN KEY (`parent_id`)   REFERENCES `posts`         (`id`)
 );
 
 -- Delayed Constraints
@@ -59,6 +59,6 @@ ALTER TABLE `post_votes`
 	ADD CONSTRAINT `fk_post_votes.post_id` FOREIGN KEY (`post_id`)  REFERENCES `posts` (`id`);
 
 ALTER TABLE `post_versions`
-	ADD CONSTRAINT `fk_post_versions.post_id`    FOREIGN KEY (`post_id`)    REFERENCES `posts` (`id`),
-		CONSTRAINT `fk_post_versions.parent`     FOREIGN KEY (`parent`)     REFERENCES `posts` (`id`),
-		CONSTRAINT `fk_post_versions.old_parent` FOREIGN KEY (`old_parent`) REFERENCES `posts` (`id`);
+	ADD CONSTRAINT `fk_post_versions.post_id`       FOREIGN KEY (`post_id`)       REFERENCES `posts` (`id`),
+	ADD CONSTRAINT `fk_post_versions.parent_id`     FOREIGN KEY (`parent_id`)     REFERENCES `posts` (`id`),
+	ADD CONSTRAINT `fk_post_versions.old_parent_id` FOREIGN KEY (`old_parent_id`) REFERENCES `posts` (`id`);

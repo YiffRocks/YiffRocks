@@ -8,6 +8,13 @@ import AWS from "aws-sdk";
 import { fileTypeFromBuffer } from "file-type";
 import { assert } from "tsafe";
 import Jimp from "jimp";
+import ffmpeg from "fluent-ffmpeg";
+import gm from "gm";
+import { randomBytes } from "crypto";
+import { tmpdir } from "os";
+import { readFile, unlink, writeFile } from "fs/promises";
+import { Readable } from "stream";
+import { exec } from "child_process";
 export default class S3StorageManager extends BaseStorageManager {
 	private s3Client: AWS.S3;
 	private publicBucket: string;
@@ -48,13 +55,34 @@ export default class S3StorageManager extends BaseStorageManager {
 			fileType.ext === "apng" ? "apng" :
 				fileType.ext === "jpg" ? "jpg" :
 					fileType.ext === "gif" ? "gif" :
-						fileType.ext === "mp4" ? "video" : null);
+						fileType.ext === "webm" ? "video" : null);
 		assert(type !== null, "unable to determine file type (internal)");
 		const protectionType = parsedFlags.REPLACEMENT ? "replacements" : parsedFlags.DELETED ? "deleted" : null;
 		const isProtected = parsedFlags.REPLACEMENT || parsedFlags.DELETED;
 		const Bucket = isProtected ? this.privateBucket : this.publicBucket;
 		if (Config.allowedMimeTypes.includes(fileType.mime)) {
-			const j = await Jimp.read(data);
+			let width: number, height: number, j: Jimp | undefined;
+			if (fileType.mime === "video/webm") {
+				const rand = randomBytes(32).toString("hex");
+				await writeFile(`${tmpdir()}/${rand}.webm`, data);
+				const info = await new Promise<{ width: number; height: number; }>((resolve, reject) => exec(`ffprobe -v error -show_entries stream=width,height -of default=noprint_wrappers=1 ${tmpdir()}/${rand}.webm`, (err, stdout) => {
+					if (err) return reject(err);
+					const w = Number(stdout.match(/width=(\d+)/)?.[1] || 0);
+					const h = Number(stdout.match(/height=(\d+)/)?.[1] || 0);
+					resolve({
+						width:  w,
+						height: h
+					});
+				}));
+				width = info.width;
+				height = info.height;
+				await unlink(`${tmpdir()}/${rand}.webm`);
+			} else {
+				j = await Jimp.read(data);
+				width = j.bitmap.width;
+				height = j.bitmap.height;
+			}
+
 			await this.s3Client.putObject({
 				ACL:         "public-read",
 				Body:        data,
@@ -63,18 +91,20 @@ export default class S3StorageManager extends BaseStorageManager {
 				Key:         this.key(isProtected, protectionType, hash, fileType.ext)
 			}).promise();
 			const file = await File.create({
-				ext:     fileType.ext,
+				ext:        fileType.ext,
 				flags,
-				height:  j.bitmap.height,
-				md5:     hash,
-				mime:    fileType.mime,
-				post_id: postID,
-				type,
-				width:   j.bitmap.width
+				height,
+				md5:        hash,
+				is_primary: true,
+				mime:       fileType.mime,
+				post_id:    postID,
+				type:       this.getFileType(fileType.ext),
+				width
 			});
 			files.push(file);
 
 			if (fileType.mime === "image/png") {
+				assert(j !== undefined, "failed to retrieve jimp object");
 				const [info, jpeg] = await this.convertImage(j.clone(), "jpg");
 				const hashJpeg = Util.md5(jpeg);
 				await this.s3Client.putObject({
@@ -82,21 +112,24 @@ export default class S3StorageManager extends BaseStorageManager {
 					Body:        jpeg,
 					Bucket,
 					ContentType: fileType.mime,
-					Key:         this.key(isProtected, protectionType, hashJpeg, info.getExtension())
+					Key:         this.key(isProtected, protectionType, hashJpeg, "jpg")
 				}).promise();
 				const jpegFile = await File.create({
-					ext:     info.getExtension(),
+					ext:        "jpg",
 					flags,
-					height:  info.bitmap.height,
-					md5:     hashJpeg,
-					mime:    info.getMIME(),
-					post_id: postID,
-					type,
-					width:   info.bitmap.width,
-					parent:  file.id
+					height:     info.bitmap.height,
+					md5:        hashJpeg,
+					is_primary: false,
+					mime:       "image/jpeg",
+					post_id:    postID,
+					type:       this.getFileType("jpg"),
+					width:      info.bitmap.width,
+					parent_id:  file.id
 				});
 				files.push(jpegFile);
+				await this.addToIQDB(postID, jpeg);
 			} else if (fileType.mime === "image/jpeg") {
+				assert(j !== undefined, "failed to retrieve jimp object");
 				const [info, png] = await this.convertImage(j.clone(), "png");
 				const hashPng = Util.md5(png);
 				await this.s3Client.putObject({
@@ -104,21 +137,24 @@ export default class S3StorageManager extends BaseStorageManager {
 					Body:        png,
 					Bucket,
 					ContentType: fileType.mime,
-					Key:         this.key(isProtected, protectionType, hashPng, info.getExtension())
+					Key:         this.key(isProtected, protectionType, hashPng, "png")
 				}).promise();
 				const jpegFile = await File.create({
-					ext:     info.getExtension(),
+					ext:        "png",
 					flags,
-					height:  info.bitmap.height,
-					md5:     hashPng,
-					mime:    info.getMIME(),
-					post_id: postID,
-					type,
-					width:   info.bitmap.width,
-					parent:  file.id
+					height:     info.bitmap.height,
+					md5:        hashPng,
+					is_primary: false,
+					mime:       "image/png",
+					post_id:    postID,
+					type:       this.getFileType("png"),
+					width:      info.bitmap.width,
+					parent_id:  file.id
 				});
 				files.push(jpegFile);
+				await this.addToIQDB(postID, data); // yes, this is meant to use the provided jpeg
 			} else if (fileType.mime === "image/apng") {
+				assert(j !== undefined, "failed to retrieve jimp object");
 				const [infoJpeg, jpeg] = await this.convertImage(j.clone(), "jpg");
 				const hashJpeg = Util.md5(jpeg);
 				await this.s3Client.putObject({
@@ -126,20 +162,22 @@ export default class S3StorageManager extends BaseStorageManager {
 					Body:        jpeg,
 					Bucket,
 					ContentType: fileType.mime,
-					Key:         this.key(isProtected, protectionType, hashJpeg, infoJpeg.getExtension())
+					Key:         this.key(isProtected, protectionType, hashJpeg, "jpg")
 				}).promise();
 				const jpegFile = await File.create({
-					ext:     infoJpeg.getExtension(),
+					ext:        "jpg",
 					flags,
-					height:  infoJpeg.bitmap.height,
-					md5:     hashJpeg,
-					mime:    infoJpeg.getMIME(),
-					post_id: postID,
-					type,
-					width:   infoJpeg.bitmap.width,
-					parent:  file.id
+					height:     infoJpeg.bitmap.height,
+					md5:        hashJpeg,
+					is_primary: false,
+					mime:       "image/jpeg",
+					post_id:    postID,
+					type:       this.getFileType("jpg"),
+					width:      infoJpeg.bitmap.width,
+					parent_id:  file.id
 				});
 				files.push(jpegFile);
+				await this.addToIQDB(postID, jpeg);
 
 				const [infoPng, png] = await this.convertImage(j.clone(), "png");
 				const hashPng = Util.md5(png);
@@ -148,24 +186,145 @@ export default class S3StorageManager extends BaseStorageManager {
 					Body:        png,
 					Bucket,
 					ContentType: fileType.mime,
-					Key:         this.key(isProtected, protectionType, hashPng, infoPng.getExtension())
+					Key:         this.key(isProtected, protectionType, hashPng, "png")
 				}).promise();
 				const pngFile = await File.create({
-					ext:     infoPng.getExtension(),
+					ext:        "png",
 					flags,
-					height:  infoPng.bitmap.height,
-					md5:     hashPng,
-					mime:    infoPng.getMIME(),
-					post_id: postID,
-					type,
-					width:   infoPng.bitmap.width,
-					parent:  file.id
+					height:     infoPng.bitmap.height,
+					md5:        hashPng,
+					is_primary: false,
+					mime:       "image/png",
+					post_id:    postID,
+					type:       this.getFileType("png"),
+					width:      infoPng.bitmap.width,
+					parent_id:  file.id
 				});
 				files.push(pngFile);
-			} else throw new Error(`Unknown Image Type "${fileType.mime}"`);
-		} else {
-			// @TODO videos
-		}
+			} else if (fileType.mime === "image/gif") {
+				const fileJpeg = await new Promise<Buffer>((resolve, reject) => gm(data)
+					.selectFrame(0)
+					.toBuffer("jpg", (err, buf) => err ? reject(err) : resolve(buf)));
+				const infoJpeg = await Jimp.read(fileJpeg);
+				const hashJpeg = Util.md5(fileJpeg);
+				await this.s3Client.putObject({
+					ACL:         "public-read",
+					Body:        fileJpeg,
+					Bucket,
+					ContentType: fileType.mime,
+					Key:         this.key(isProtected, protectionType, hashJpeg, "jpg")
+				}).promise();
+				const jpegFile = await File.create({
+					ext:        "jpg",
+					flags,
+					height:     infoJpeg.bitmap.height,
+					md5:        hashJpeg,
+					is_primary: false,
+					mime:       "image/jpeg",
+					post_id:    postID,
+					type:       this.getFileType("jpg"),
+					width:      infoJpeg.bitmap.width,
+					parent_id:  file.id
+				});
+				files.push(jpegFile);
+				// @TODO do we even want to bother uploading the previews of videos/gifs? it's possible for a lot
+				// of their first frames to be pitch black so it may be more hassle than it's worth
+
+
+				const filePng = await new Promise<Buffer>((resolve, reject) => gm(data)
+					.selectFrame(0)
+					.toBuffer("png", (err, buf) => err ? reject(err) : resolve(buf)));
+				const infoPng = await Jimp.read(filePng);
+				const hashPng = Util.md5(filePng);
+				await this.s3Client.putObject({
+					ACL:         "public-read",
+					Body:        filePng,
+					Bucket,
+					ContentType: fileType.mime,
+					Key:         this.key(isProtected, protectionType, hashJpeg, "png")
+				}).promise();
+				const pngFile = await File.create({
+					ext:        "png",
+					flags,
+					height:     infoPng.bitmap.height,
+					md5:        hashPng,
+					is_primary: false,
+					mime:       "image/png",
+					post_id:    postID,
+					type:       this.getFileType("png"),
+					width:      infoPng.bitmap.width,
+					parent_id:  file.id
+				});
+				files.push(pngFile);
+			} else if (fileType.mime === "video/webm") {
+				const rand = randomBytes(32).toString("hex");
+
+				await new Promise<void>((resolve) => ffmpeg(Readable.from(data))
+					.frames(1)
+					.output(`${tmpdir()}/${rand}.jpg`)
+					.on("end", resolve)
+					.run()
+				);
+				const fileJpeg = await readFile(`${tmpdir()}/${rand}.jpg`);
+				const infoJpeg = await Jimp.read(fileJpeg);
+				const hashJpeg = Util.md5(fileJpeg);
+				await this.s3Client.putObject({
+					ACL:         "public-read",
+					Body:        fileJpeg,
+					Bucket,
+					ContentType: fileType.mime,
+					Key:         this.key(isProtected, protectionType, hashJpeg, "jpg")
+				}).promise();
+				await unlink(`${tmpdir()}/${rand}.jpg`);
+				const jpegFile = await File.create({
+					ext:        "jpg",
+					flags,
+					height:     infoJpeg.bitmap.height,
+					md5:        hashJpeg,
+					is_primary: false,
+					mime:       "image/jpeg",
+					post_id:    postID,
+					type:       this.getFileType("jpg"),
+					width:      infoJpeg.bitmap.width,
+					parent_id:  file.id
+				});
+				files.push(jpegFile);
+				// @TODO do we even want to bother uploading the previews of videos/gifs? it's possible for a lot
+				// of their first frames to be pitch black so it may be more hassle than it's worth
+
+				await new Promise<void>((resolve) => ffmpeg(Readable.from(data))
+					.frames(1)
+					.output(`${tmpdir()}/${rand}.png`)
+					.on("end", resolve)
+					.run()
+				);
+
+				const filePng = await readFile(`${tmpdir()}/${rand}.png`);
+				const infoPng = await Jimp.read(filePng);
+				const hashPng = Util.md5(filePng);
+				await this.s3Client.putObject({
+					ACL:         "public-read",
+					Body:        filePng,
+					Bucket,
+					ContentType: fileType.mime,
+					Key:         this.key(isProtected, protectionType, hashJpeg, "png")
+				}).promise();
+				await unlink(`${tmpdir()}/${rand}.png`);
+				const pngFile = await File.create({
+					ext:        "png",
+					flags,
+					height:     infoPng.bitmap.height,
+					md5:        hashPng,
+					is_primary: false,
+					mime:       "image/png",
+					post_id:    postID,
+					type:       this.getFileType("png"),
+					width:      infoPng.bitmap.width,
+					parent_id:  file.id
+				});
+				files.push(pngFile);
+			} else throw new Error(`Unsupported File Type "${fileType.mime}"`);
+		} else throw new Error(`Invalid File Type Recieved "${fileType.mime}"`);
 
 		// @TODO primary flag & generating previews
 

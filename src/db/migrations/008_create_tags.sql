@@ -1,4 +1,4 @@
-CREATE TABLE `files` (
+CREATE TABLE `tags` (
 	`id`          INT UNSIGNED  PRIMARY KEY AUTO_INCREMENT,
 	`name`        TINYTEXT      NOT NULL,
 	`post_count`  INT UNSIGNED  NOT NULL DEFAULT 0,
@@ -10,8 +10,8 @@ CREATE TABLE `files` (
 	-- Indexes
 	UNIQUE INDEX  `id`       (`id`),
 	UNIQUE INDEX  `name`     (`name`)
-)
+);
 
-
+-- Delayed Constraints
 ALTER TABLE `tag_versions`
-	ADD CONSTRAINT `fk_tag_versions.tag_id`    FOREIGN KEY (`tag_id`)    REFERENCES `tags` (`id`),
+	ADD CONSTRAINT `fk_tag_versions.tag_id` FOREIGN KEY (`tag_id`) REFERENCES `tags` (`id`);

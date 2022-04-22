@@ -16,6 +16,8 @@ export type TagCreationRequired = Pick<TagData, "name">;
 export type TagCreationIgnored = "id" | "created_at" | "updated_at";
 export type TagCreationData = TagCreationRequired & Partial<Omit<TagData, keyof TagCreationRequired | TagCreationIgnored>>;
 
+// @TODO tag revision and proper versioning
+
 export enum TagCategories {
 	GENERAL   = 0,
 	ARTIST    = 1,
@@ -26,7 +28,7 @@ export enum TagCategories {
 	LORE      = 6,
 	META      = 7
 }
-export const TagCategoryNames = Util.enumKeys(TagCategories);
+export const TagCategoryNames = Util.enumKeys(TagCategories).map(k => k.toLowerCase());
 
 // future proofing
 export enum TagRestrictions {
@@ -87,7 +89,7 @@ export default class Tag implements TagData {
 		this.updated_at = data.updated_at;
 		this.post_count = data.post_count;
 		this.category   = data.category;
-		this.locked     = data.locked;
+		this.locked     = Boolean(data.locked);
 	}
 
 	get categoryName() { return Util.normalizeConstant(TagCategories[this.category]); }
@@ -126,7 +128,27 @@ export default class Tag implements TagData {
 		return Util.genericEdit(Tag, this.TABLE, id, data);
 	}
 
+	static async getTagType(name: string) {
+		const [res] = await db.query<Array<{ category: number; }>>(`SELECT category FROM ${this.TABLE} WHERE name = ?`, [name]);
+		if (!res) return null;
+		return res.category;
+	}
+
+	static async parseTagTypes(data: string) {
+		const tags = data.split(" ").filter(Boolean);
+		const types = TagCategoryNames.map(t => ({ [t]: [] as Array<string> })).reduce((a, b) => ({ ...a, ...b }), {});
+		for (const tag of tags) {
+			const type = await this.getTagType(tag);
+			if (type === null) {
+				if (!types.unknown) types.unknown = [];
+				types.unknown.push(tag);
+			} else types[TagCategories[type].toLowerCase()].push(tag);
+		}
+		return types;
+	}
+
 	static parseMetaTag(tag: string, validMeta = [...MetaTags, ...TagCategoryNames]): [metatag: string | null, name: string] {
+		validMeta = validMeta.map(m => m.toLowerCase());
 		if (!tag.includes(":")) return [null, tag];
 		const [meta, ...n] = tag.split(":");
 		const name = n.join(":");

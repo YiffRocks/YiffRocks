@@ -1,12 +1,13 @@
 import Util from "./Util";
 import { GeneralErrors, UserErrors } from "../logic/errors/API";
-import { UserLevels } from "../db/Models/User";
+import User, { UserLevels } from "../db/Models/User";
+import Config from "../config";
 import type { NextFunction, Request, Response } from "express";
 
 export default function authCheck(responseType: "json" | "html", requiredLevel = UserLevels.MEMBER) {
 	return (async (req: Request, res: Response, next: NextFunction) => {
-		// @TODO auth checks
-		// eslint-disable-next-line no-constant-condition
+		if (!req.data.user && Config.isDevelopment) req.data.user = await User.get(1) as User;
+
 		if (!req.data.user) {
 			if (responseType === "json") return res.status(401).json(GeneralErrors.AUTH_REQUIRED);
 			else return res.redirect(`/login?url=${req.originalUrl}&authFail=true`);

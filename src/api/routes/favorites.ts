@@ -9,7 +9,7 @@ import { assert } from "tsafe";
 
 const app = Router();
 
-
+// @TODO should we let users search others favorites?
 app.route("/")
 	.all(apiHeaders(["OPTIONS", "GET"]), authCheck("json"))
 	.get(async(req, res) => {

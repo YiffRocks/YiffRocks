@@ -1,6 +1,7 @@
 import type File from "../../db/Models/File";
 import { FileFlags } from "../../db/Models/File";
 import type Post from "../../db/Models/Post";
+import IQDB from "../IQDB";
 import Jimp from "jimp";
 
 /** Storage managers should extend this. */
@@ -106,5 +107,18 @@ export default abstract class BaseStorageManager {
 	protected async convertImage(data: Buffer | Jimp, type: "png" | "jpg"): Promise<[Jimp, Buffer]> {
 		const j = (Buffer.isBuffer(data) ? await Jimp.read(data) : data);
 		return [j, await j.getBufferAsync(type === "png" ? Jimp.MIME_PNG : type === "jpg" ? Jimp.MIME_JPEG : "")];
+	}
+
+	protected getFileType(ext: string) {
+		return (
+			ext === "png" ? "png" :
+				ext === "apng" ? "apng" :
+					ext === "jpg" ? "jpg" :
+						ext === "gif" ? "gif" :
+							ext === "webm" ? "video" : "unknown");
+	}
+
+	protected async addToIQDB(post_id: number, data: Buffer) {
+		return IQDB.add(post_id, data);
 	}
 }

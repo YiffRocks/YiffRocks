@@ -15,6 +15,7 @@ app
 	.use(morgan("dev"))
 	.use(Config.sharedSession)
 	.use(async(req, res, next) => {
+		if (!req.data) req.data = {};
 		if (req.session && req.session.userID) {
 			const user = await User.get(req.session.userID);
 			if (user === null) req.session.userID = undefined;
@@ -31,5 +32,6 @@ app
 	.use("/tags", (await import("./routes/tags")).default)
 	.use("/users", (await import("./routes/users")).default);
 
+if (Config.isDevelopment) app.use("/data", express.static(`${Config.tmpDir}/public`));
 
 app.listen(Config.apiPort, Config.apiHost, () => console.log("Listening on http://%s:%s", Config.apiHost, Config.apiPort));

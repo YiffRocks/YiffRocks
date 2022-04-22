@@ -36,7 +36,7 @@ export interface PostData {
 	rating_lock: RatingLocks | null;
 	/** array of file ids associated with this post */
 	files: string;
-	parent: number | null;
+	parent_id: number | null;
 	childeren: string | null;
 	pools: string | null;
 	description: string;
@@ -82,7 +82,7 @@ export default class Post implements PostData {
 	rating: Ratings;
 	rating_lock: RatingLocks | null;
 	files: string;
-	parent: number | null;
+	parent_id: number | null;
 	childeren: string | null;
 	pools: string | null;
 	description: string;
@@ -109,7 +109,7 @@ export default class Post implements PostData {
 		this.rating = data.rating ?? "explicit";
 		this.rating_lock = data.rating_lock;
 		this.files = data.files ?? "";
-		this.parent = data.parent;
+		this.parent_id = data.parent_id;
 		this.childeren = data.childeren;
 		this.pools = data.pools;
 		this.description = data.description;
@@ -142,7 +142,7 @@ export default class Post implements PostData {
 			locked_tags:        data.locked_tags,
 			rating:             data.rating,
 			rating_lock:        data.rating_lock,
-			parent:             data.parent,
+			parent_id:          data.parent_id,
 			description:        data.description,
 			title:              data.title
 		}, true);
@@ -185,8 +185,8 @@ export default class Post implements PostData {
 			old_rating:      data.rating === undefined ? undefined : post.rating,
 			rating_lock:     data.rating_lock || post.rating_lock,
 			old_rating_lock: data.rating_lock === undefined ? undefined : post.rating_lock,
-			parent:          data.parent || post.parent,
-			old_parent:      data.parent === undefined ? undefined : post.parent,
+			parent_id:       data.parent_id || post.parent_id,
+			old_parent_id:   data.parent_id === undefined ? undefined : post.parent_id,
 			description:     data.description || post.description,
 			old_description: data.description === undefined ? undefined : post.description,
 			title:           data.title || post.title,
@@ -221,6 +221,126 @@ export default class Post implements PostData {
 		}
 	}
 
+	static async search(query: {
+		uploader_id?: number;
+		uploader_name?: string;
+		approver_id?: number;
+		approver_name?: string;
+		sources?: string;
+		tags?: string;
+		locked_tags?: string;
+		rating?: Ratings | "e" | "q" | "s";
+		rating_lock?: RatingLocks | "none";
+		parent_id?: number;
+		childeren?: string;
+		pools?: string;
+		description?: string;
+		title?: string;
+	}, limit: number, offset: number) {
+		const statements: Array<string> = [];
+		const values: Array<unknown> = [];
+		if (query.uploader_id && !isNaN(query.uploader_id)) {
+			statements.push("uploader_id = ?");
+			values.push(Number(query.uploader_id));
+		}
+		if (query.uploader_name) {
+			const id = await User.nameToID(query.uploader_name);
+			if (id !== null) {
+				statements.push("uploader_id = ?");
+				values.push(id);
+			}
+		}
+		if (query.approver_id && !isNaN(query.approver_id)) {
+			statements.push("approver_id = ?");
+			values.push(Number(query.approver_id));
+		}
+		if (query.approver_name) {
+			const id = await User.nameToID(query.approver_name);
+			if (id !== null) {
+				statements.push("approver_id = ?");
+				values.push(id);
+			}
+		}
+		if (query.sources) {
+			const all = query.sources.split(" ");
+			for (const source of all) {
+				statements.push("sources LIKE ?");
+				values.push(`%${Util.parseWildcards(source)}%`);
+			}
+		}
+		if (query.tags) {
+			const all = query.tags.split(" ");
+			// @TODO revisit this as it might have some weird outcomes
+			for (const tag of all) {
+
+				if (tag.includes(Config.wildcardCharacter)) {
+					statements.push("tags LIKE ?");
+					values.push(Util.parseWildcards(tag));
+				} else {
+					statements.push("FIND_IN_SET(?, REPLACE(tags, ' ', ','))");
+					values.push(tag);
+				}
+			}
+		}
+		if (query.locked_tags) {
+			const all = query.locked_tags.split(" ");
+			for (const tag of all) {
+				if (tag.includes(Config.wildcardCharacter)) {
+					statements.push("locked_tags LIKE ?");
+					values.push(Util.parseWildcards(tag));
+				} else {
+					statements.push("FIND_IN_SET(?, REPLACE(locked_tags, ' ', ','))");
+					values.push(tag);
+				}
+			}
+		}
+		if (query.rating) {
+			const r = query.rating === "e" ? "explicit" : query.rating === "q" ? "questionable" : query.rating === "s" ? "safe" : query.rating;
+			if (VALID_RATINGS.includes(r)) {
+				statements.push("rating = ?");
+				values.push(r);
+			}
+		}
+		if (query.rating_lock) {
+			const r = query.rating_lock === "none" ? null : query.rating_lock;
+			if (r === null || VALID_RATING_LOCKS.includes(r)) {
+				statements.push("rating_lock = ?");
+				values.push(r);
+			}
+		}
+		if (query.parent_id && !isNaN(query.parent_id)) {
+			statements.push("parent_id = ?");
+			values.push(query.parent_id);
+		}
+		if (query.childeren) {
+			const all = query.childeren.split(" ");
+			for (const child of all) {
+				statements.push("FIND_IN_SET(?, REPLACE(childeren, ' ', ','))");
+				values.push(child);
+			}
+		}
+		if (query.pools) {
+			const all = query.pools.split(" ");
+			for (const pool of all) {
+				statements.push("FIND_IN_SET(?, REPLACE(pools, ' ', ','))");
+				values.push(pool);
+			}
+		}
+		if (query.description) {
+			statements.push("description LIKE ?");
+			values.push(`%${Util.parseWildcards(query.description)}%`);
+		}
+		if (query.title) {
+			statements.push("title LIKE ?");
+			values.push(`%${Util.parseWildcards(query.title)}%`);
+		}
+
+		const res = await db.query<Array<PostData>>(`SELECT * FROM posts${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${offset}, ${limit}`, values);
+		console.log(res.length);
+		return res.map(r => new Post(r));
+	}
+
+
 	async setTags(user: User, ipAddress: string | null, data: string) {
 		const tags = data.split(" ");
 		const finalTags: Array<string> = [];
@@ -244,7 +364,7 @@ export default class Post implements PostData {
 					} else {
 						await Tag.create({
 							name,
-							category: TagCategories[meta as keyof typeof TagCategories]
+							category: TagCategories[(meta.toUpperCase()) as keyof typeof TagCategories]
 						});
 						finalTags.push(name);
 						continue;
@@ -339,8 +459,9 @@ export default class Post implements PostData {
 			rating:      newRating,
 			rating_lock: newRatingLock
 		});
-	}
 
+		return errors;
+	}
 	async delete() {
 		return Post.delete(this.id);
 	}
@@ -434,8 +555,12 @@ export default class Post implements PostData {
 	async addFile(data: Buffer, flags = 0) {
 		const files = await Config.storageManager.store(data, this.id, flags);
 		await this.edit({
-			files: `${this.files} ${files.join(" ")}`
+			files: `${this.files} ${files.map(f => f.id).join(" ")}`.trim()
 		});
+		return {
+			primary: files.find(f => f.is_primary === true),
+			all:     files
+		};
 	}
 
 	// stats
@@ -467,7 +592,6 @@ export default class Post implements PostData {
 			updated_at:    this.updated_at,
 			version:       this.version,
 			revision:      this.revision,
-			versions:      this.versions.split(" ").map(v => Number(v)),
 			score:         {
 				up:    this.score_up,
 				down:  this.score_down,
@@ -475,20 +599,19 @@ export default class Post implements PostData {
 			},
 			favorite_count: this.favorite_count,
 			// @TODO tag categories
-			tags:           {
-				general: this.tags.split(" ")
-			},
-			locked_tags: this.locked_tags.split(" "),
-			sources:     this.sources.split(" "),
-			flags:       {
+			tags:           await Tag.parseTagTypes(this.tags),
+			locked_tags:    this.locked_tags.split(" ").filter(Boolean),
+			sources:        this.sources.split(" ").filter(Boolean),
+			flags:          {
 				...Util.lowercaseKeys(this.parsedFlags),
 				rating_lock: this.rating_lock
 			},
 			rating:        this.rating,
 			files:         (await this.getFiles()).map(f => f.toJSON()),
 			relationships: {
-				parent:    this.parent,
+				parent:    this.parent_id,
 				childeren: await this.getChildPosts(),
+				versions:  this.versions.split(" ").map(v => Number(v)),
 				pools:     this.poolIDs
 			},
 			description:   this.description,

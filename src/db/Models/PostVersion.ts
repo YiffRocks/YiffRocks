@@ -21,8 +21,8 @@ export interface PostVersionData {
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
 	old_rating_lock: "minimum" | "exact" | "maximum" | null;
-	parent: number | null;
-	old_parent: number | null;
+	parent_id: number | null;
+	old_parent_id: number | null;
 	description: string;
 	old_description: string;
 	title: string;
@@ -50,8 +50,8 @@ export default class PostVersion implements PostVersionData {
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
 	old_rating_lock: "minimum" | "exact" | "maximum" | null;
-	parent: number | null;
-	old_parent: number | null;
+	parent_id: number | null;
+	old_parent_id: number | null;
 	description: string;
 	old_description: string;
 	title: string;
@@ -74,8 +74,8 @@ export default class PostVersion implements PostVersionData {
 		this.old_rating         = data.old_rating;
 		this.rating_lock        = data.rating_lock;
 		this.old_rating_lock    = data.old_rating_lock;
-		this.parent             = data.parent;
-		this.old_parent         = data.old_parent;
+		this.parent_id             = data.parent_id;
+		this.old_parent_id         = data.old_parent_id;
 		this.description        = data.description.trim();
 		this.old_description    = data.old_description.trim();
 		this.title              = data.title.trim();
@@ -132,7 +132,7 @@ export default class PostVersion implements PostVersionData {
 	get removedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).removed : []; }
 	get ratingChanged() { return Boolean(this.old_rating && this.rating !== this.old_rating); }
 	get ratingLockChanged() { return Boolean(this.old_rating_lock && this.rating_lock !== this.old_rating_lock); }
-	get parentChanged() { return Boolean(this.old_parent && this.parent !== this.old_parent); }
+	get parentChanged() { return Boolean(this.old_parent_id && this.parent_id !== this.old_parent_id); }
 	get descriptionChanged() { return Boolean(this.old_description && this.description !== this.old_description); }
 	get titleChanged() { return Boolean(this.old_title && this.title !== this.old_title); }
 
@@ -186,9 +186,9 @@ export default class PostVersion implements PostVersionData {
 				old_rating_lock: this.old_rating_lock
 			} : {}),
 			parent_changed: this.parentChanged,
-			parent:         this.parent,
+			parent:         this.parent_id,
 			...(this.parentChanged ? {
-				old_parent: this.old_parent
+				old_parent: this.old_parent_id
 			} : {}),
 			description_changed: this.descriptionChanged,
 			description:         this.description,
