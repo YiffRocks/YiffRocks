@@ -169,13 +169,13 @@ export default class User implements UserData {
 	}
 
 	static async get(id: number) {
-		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: [res] } = await db.query<UserData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new User(res);
 	}
 
 	static async getByName(name: string) {
-		const [res] = await db.query<Array<UserData>>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [name]);
+		const { rows: [res] } = await db.query<UserData>(`SELECT * FROM ${this.TABLE} WHERE name = $1`, [name]);
 		if (!res) return null;
 		return new User(res);
 	}
@@ -183,15 +183,14 @@ export default class User implements UserData {
 	static async create(data: UserCreationData) {
 		Util.removeUndefinedKeys(data);
 		if (!("flags" in data) && data.level && data.level >= UserLevels.JANITOR) data.flags = UserFlags.APPROVER;
-		const res = await db.insert(this.TABLE, data, true);
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<number>(this.TABLE, data);
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new post object");
 		return createdObject;
 	}
 
 	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+		return db.delete(this.TABLE, id);
 	}
 
 	static async edit(id: number, data: Omit<Partial<UserData>, "id">) {
@@ -200,14 +199,14 @@ export default class User implements UserData {
 
 	static async idToName(id: number) {
 		// @TODO caching
-		const [res] = await db.query<Array<{ name: string; }>>(`SELECT name FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: [res] } = await db.query<{ name: string; }>(`SELECT name FROM ${this.TABLE} WHERE id = $1`, [id]);
 		return !res ? null : res.name;
 	}
 
 	static async nameToID(name: string) {
 		// @TODO caching
-		const [res] = await db.query<Array<{ name: string; }>>(`SELECT id FROM ${this.TABLE} WHERE name = ?`, [name]);
-		return !res ? null : res.name;
+		const { rows: [res] } = await db.query<{ id: number; }>(`SELECT id FROM ${this.TABLE} WHERE name = $1`, [name]);
+		return !res ? null : res.id;
 	}
 	// flags
 	get parsedFlags() {
@@ -433,7 +432,6 @@ export default class User implements UserData {
 			name:              this.name,
 			created_at:        this.created_at,
 			updated_at:        this.updated_at,
-			last_login:        this.last_login,
 			flags:             Util.lowercaseKeys(this.parsedFlagsWithoutPrivate),
 			level:             this.level,
 			levelName:         this.levelName,

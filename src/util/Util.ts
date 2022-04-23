@@ -28,7 +28,7 @@ export default class Util {
 	static checkFlag(flag: number, total: number) { return (total & flag) === flag; }
 
 	static async getFilesForPost(id: number) {
-		const res = await db.query<Array<FileData>>(`SELECT * FROM ${File.TABLE} WHERE post_id = ?`, [id]);
+		const { rows: res } = await db.query<FileData>(`SELECT * FROM ${File.TABLE} WHERE post_id = ?`, [id]);
 		return res.map(r => new File(r));
 	}
 
@@ -66,12 +66,12 @@ export default class Util {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	static async genericEdit<T extends { get(id: number | bigint): Promise<any>; }, D extends Record<string, unknown>>(type: T, table: string, id: number | bigint, data: D): Promise<boolean> {
+	static async genericEdit<T extends { get(id: number | string): Promise<any>; }, D extends Record<string, unknown>>(type: T, table: string, id: number | string, data: D): Promise<boolean> {
 		if (Object.hasOwn(data, "updated_at")) delete data.updated_at;
 		const keys = Object.keys(data);
 		const values = Object.values(data).filter(Boolean) ;
-		const res = await db.query<OkPacket>(`UPDATE ${table} SET ${keys.map(j => `${j}=?`).join(", ")}, updated_at=CURRENT_TIMESTAMP(3) WHERE id = ?`, [...values, id]);
-		return res.affectedRows > 0;
+		const res = await db.query<OkPacket>(`UPDATE ${table} SET ${keys.map((j, index) => `${j}=$${index + 2}`).join(", ")}, updated_at=CURRENT_TIMESTAMP(3) WHERE id = $1`, [id, ...values]);
+		return res.rowCount >= 1;
 	}
 
 	static md5(data: BinaryLike) {
@@ -116,5 +116,9 @@ export default class Util {
 		} else offset = (page - 1) * limit;
 
 		return [limit, offset];
+	}
+
+	static toPGArray(values: Array<unknown>) {
+		return `{${values.map(v => typeof v === "string" && (v.includes(",") || v.includes("}") ? `"${v}"` : v)).join(",")}}`;
 	}
 }

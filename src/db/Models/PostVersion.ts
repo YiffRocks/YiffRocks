@@ -11,12 +11,12 @@ export interface PostVersionData {
 	updater_id: number;
 	updater_ip_address: string | null;
 	revision: number;
-	sources: string;
-	old_sources: string;
-	tags: string;
-	old_tags: string;
-	locked_tags: string;
-	old_locked_tags: string;
+	sources: Array<string>;
+	old_sources: Array<string>;
+	tags: Array<string>;
+	old_tags: Array<string>;
+	locked_tags: Array<string>;
+	old_locked_tags: Array<string>;
 	rating: "safe" | "questionable" | "explicit";
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
@@ -40,12 +40,12 @@ export default class PostVersion implements PostVersionData {
 	updater_id: number;
 	updater_ip_address: string | null;
 	revision: number;
-	sources: string;
-	old_sources: string;
-	tags: string;
-	old_tags: string;
-	locked_tags: string;
-	old_locked_tags: string;
+	sources: Array<string>;
+	old_sources: Array<string>;
+	tags: Array<string>;
+	old_tags: Array<string>;
+	locked_tags: Array<string>;
+	old_locked_tags: Array<string>;
 	rating: "safe" | "questionable" | "explicit";
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
@@ -64,12 +64,12 @@ export default class PostVersion implements PostVersionData {
 		this.updater_id         = data.updater_id;
 		this.updater_ip_address = data.updater_ip_address;
 		this.revision           = data.revision;
-		this.sources            = data.sources.trim();
-		this.old_sources        = data.old_sources.trim();
-		this.tags               = data.tags.trim();
-		this.old_tags           = data.old_tags.trim();
-		this.locked_tags        = data.locked_tags.trim();
-		this.old_locked_tags    = data.old_locked_tags.trim();
+		this.sources            = data.sources;
+		this.old_sources        = data.old_sources;
+		this.tags               = data.tags;
+		this.old_tags           = data.old_tags;
+		this.locked_tags        = data.locked_tags;
+		this.old_locked_tags    = data.old_locked_tags;
 		this.rating             = data.rating;
 		this.old_rating         = data.old_rating;
 		this.rating_lock        = data.rating_lock;
@@ -82,20 +82,20 @@ export default class PostVersion implements PostVersionData {
 		this.old_title          = data.old_title.trim();
 	}
 
-	static async get(id: number | bigint) {
-		const [res] = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+	static async get(id: number) {
+		const { rows: [res] } = await db.query<PostVersionData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new PostVersion(res);
 	}
 
 	static async getForPostAndRevision(post: number, revision: number) {
-		const [res] = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ? AND revision = ?`, [post, revision]);
+		const { rows: [res] } = await db.query<PostVersionData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1 AND revision = $2`, [post, revision]);
 		if (!res) return null;
 		return new PostVersion(res);
 	}
 
 	static async getForPost(post: number) {
-		const res = await db.query<Array<PostVersionData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [post]);
+		const { rows: res } = await db.query<PostVersionData>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [post]);
 		return res.map(p => new PostVersion(p));
 	}
 
@@ -103,20 +103,19 @@ export default class PostVersion implements PostVersionData {
 	static async create(data: PostVersionCreationData, defer?: false): Promise<PostVersion>;
 	static async create(data: PostVersionCreationData, defer = false) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data, true);
-		if (defer) return res.insertId;
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<number>(this.TABLE, data);
+		if (defer) return res;
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new post object");
 		return createdObject;
 	}
 
-	static async delete(id: number | bigint) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+	static async delete(id: number) {
+		return db.delete(this.TABLE, id);
 	}
 
 
-	static async edit(id: number | bigint, data: Omit<Partial<PostVersionData>, "id">) {
+	static async edit(id: number, data: Omit<Partial<PostVersionData>, "id">) {
 		return Util.genericEdit(PostVersion, this.TABLE, id, data);
 	}
 
@@ -154,24 +153,24 @@ export default class PostVersion implements PostVersionData {
 			updater_name:    await User.idToName(this.updater_id),
 			revision:        this.revision,
 			sources_changed: this.sourcesChanged,
-			sources:         this.sources.split(" ").filter(Boolean),
+			sources:         this.sources,
 			...(this.sourcesChanged ? {
-				old_sources:     this.old_sources.split(" ").filter(Boolean),
+				old_sources:     this.old_sources,
 				sources_added:   this.addedSources,
 				sources_removed: this.removedSources
 			} : {}),
 			tags_changed: this.tagsChanged,
-			tags:         this.tags.split(" ").filter(Boolean),
+			tags:         this.tags,
 			...(this.tagsChanged ? {
-				old_tags:       this.old_tags.split(" ").filter(Boolean),
+				old_tags:       this.old_tags,
 				tags_added:     this.addedTags,
 				tags_removed:   this.removedTags,
-				unchanged_tags: this.tags.split(" ").filter(t => Boolean(t) && !this.addedTags.includes(t))
+				unchanged_tags: this.tags.filter(t => !this.addedTags.includes(t))
 			} : {}),
 			locked_tags_changed: this.lockedTagsChanged,
-			locked_tags:         this.locked_tags.split(" ").filter(Boolean),
+			locked_tags:         this.locked_tags,
 			...(this.lockedTagsChanged ? {
-				old_tags:            this.old_tags.split(" ").filter(Boolean),
+				old_tags:            this.old_tags,
 				locked_tags_added:   this.addedLockedTags,
 				locked_tags_removed: this.removedLockedTags
 			} : {}),

@@ -5,7 +5,7 @@ import Util from "../../util/Util";
 import { assert } from "tsafe";
 
 export interface FavoriteData {
-	id: bigint;
+	id: string;
 	created_at: string;
 	user_id: number;
 	post_id: number;
@@ -16,7 +16,7 @@ export type FavoriteCreationData = FavoriteCreationRequired & Partial<Omit<Favor
 
 export default class Favorite implements FavoriteData {
 	static TABLE = "favorites";
-	id: bigint;
+	id: string;
 	created_at: string;
 	user_id: number;
 	post_id: number;
@@ -27,42 +27,41 @@ export default class Favorite implements FavoriteData {
 		this.post_id    = data.post_id;
 	}
 
-	static async get(id: bigint) {
-		const [res] = await db.query<Array<FavoriteData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+	static async get(id: string) {
+		const { rows: [res] } = await db.query<FavoriteData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new Favorite(res);
 	}
 
 	static async getForUser(id: number) {
-		const res = await db.query<Array<FavoriteData>>(`SELECT * FROM ${this.TABLE} WHERE user_id = ?`, [id]);
+		const { rows: res } = await db.query<FavoriteData>(`SELECT * FROM ${this.TABLE} WHERE user_id = $1`, [id]);
 		return res.map(r => new Favorite(r));
 	}
 
 	static async getForPost(id: number) {
-		const res = await db.query<Array<FavoriteData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [id]);
+		const { rows: res } = await db.query<FavoriteData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1`, [id]);
 		return res.map(r => new Favorite(r));
 	}
 
 	static async getByUserAndPost(user: number, post: number) {
-		const [res] = await db.query<Array<FavoriteData>>(`SELECT * FROM ${this.TABLE} WHERE user_id = ? AND post_id = ?`, [user, post]);
+		const { rows: [res] } = await db.query<FavoriteData>(`SELECT * FROM ${this.TABLE} WHERE user_id = $1 AND post_id = $2`, [user, post]);
 		if (!res) return null;
 		return new Favorite(res);
 	}
 
-	static async delete(id: bigint) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+	static async delete(id: string) {
+		return db.delete(this.TABLE, id);
 	}
 
 	static async create(data: FavoriteCreationData) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data);
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<string>(this.TABLE, data);
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new Favorite object");
 		return createdObject;
 	}
 
-	static async edit(id: bigint, data: Omit<Partial<FavoriteData>, "id">) {
+	static async edit(id: string, data: Omit<Partial<FavoriteData>, "id">) {
 		return Util.genericEdit(Favorite, this.TABLE, id, data);
 	}
 

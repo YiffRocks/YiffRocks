@@ -20,8 +20,8 @@ async function downloadFile(url: string): Promise<Buffer> {
 }
 const convertRating = (r: Ratings) => r === "s" ? "safe" : r === "q" ? "questionable" : r === "e" ? "explicit" : "unknown" as never;
 
-const postsEach = 10;
-const sharedTags = " order:random score:>300 male -female solo -rating:e";
+const postsEach = 25;
+const sharedTags = " order:random score:>300 male -female solo";
 const adminUser = await User.get(1);
 assert(adminUser !== null, "null admin user");
 
@@ -64,7 +64,8 @@ for (const post of gifPosts) {
 }
 
 const apngPosts = await e6.posts.search({
-	tags:  `type:png animated ${sharedTags}`,
+	// we can't really filter much here because e621 has less than 50 of these
+	tags:  "type:png animated order:random male -female solo",
 	limit: postsEach
 });
 for (const post of apngPosts) {

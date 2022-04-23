@@ -2,7 +2,7 @@ import db from "../src/db";
 import User, { UserLevels } from "../src/db/Models/User";
 import Util from "../src/util/Util";
 
-const currentUsers = (await db.query<Array<{ name: string; }>>("SELECT name from users")).reduce((a, b) => a.concat(b.name), [] as Array<string>);
+const currentUsers = (await db.query<{ name: string; }>("SELECT name from users")).rows.reduce((a, b) => a.concat(b.name), [] as Array<string>);
 const levels = Util.enumKeys(UserLevels).reverse().map(lvl => lvl.toLowerCase());
 for (const level of levels) {
 	if (currentUsers.includes(level)) continue;

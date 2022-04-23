@@ -49,33 +49,33 @@ export default class TagVersion implements TagVersionData {
 		this.old_locked         = data.old_locked;
 	}
 
-	static async get(id: number | bigint) {
-		const [res] = await db.query<Array<TagVersionData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+	static async get(id: number) {
+		const { rows: [res] } = await db.query<TagVersionData>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
 		if (!res) return null;
 		return new TagVersion(res);
 	}
 
 	static async getForTagAndRevision(tag: number, revision: number) {
 
-		const [res] = await db.query<Array<TagVersionData>>(`SELECT * FROM ${this.TABLE} WHERE tag_id = ? AND revision = ?`, [tag, revision]);
+		const { rows: [res] } = await db.query<TagVersionData>(`SELECT * FROM ${this.TABLE} WHERE tag_id = ? AND revision = ?`, [tag, revision]);
 		if (!res) return null;
 		return new TagVersion(res);
 	}
 
 	static async getForTagNameAndRevision(tag: string, revision: number) {
 
-		const [res] = await db.query<Array<TagVersionData>>(`SELECT * FROM ${this.TABLE} WHERE name = ? AND revision = ?`, [tag, revision]);
+		const { rows: [res] } = await db.query<TagVersionData>(`SELECT * FROM ${this.TABLE} WHERE name = ? AND revision = ?`, [tag, revision]);
 		if (!res) return null;
 		return new TagVersion(res);
 	}
 
 	static async getForTag(tag: number) {
-		const res = await db.query<Array<TagVersionData>>(`SELECT * FROM ${this.TABLE} WHERE tag_id = ?`, [tag]);
+		const { rows: res } = await db.query<TagVersionData>(`SELECT * FROM ${this.TABLE} WHERE tag_id = ?`, [tag]);
 		return res.map(p => new TagVersion(p));
 	}
 
 	static async getForTagName(tag: string) {
-		const res = await db.query<Array<TagVersionData>>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [tag]);
+		const { rows: res } = await db.query<TagVersionData>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [tag]);
 		return res.map(p => new TagVersion(p));
 	}
 
@@ -83,20 +83,19 @@ export default class TagVersion implements TagVersionData {
 	static async create(data: TagVersionCreationData, defer?: false): Promise<TagVersion>;
 	static async create(data: TagVersionCreationData, defer = false) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data, true);
-		if (defer) return res.insertId;
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<number>(this.TABLE, data);
+		if (defer) return res;
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new Tag object");
 		return createdObject;
 	}
 
-	static async delete(id: number | bigint) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+	static async delete(id: number) {
+		return db.delete(this.TABLE, id);
 	}
 
 
-	static async edit(id: number | bigint, data: Omit<Partial<TagVersionData>, "id">) {
+	static async edit(id: number, data: Omit<Partial<TagVersionData>, "id">) {
 		return Util.genericEdit(TagVersion, this.TABLE, id, data);
 	}
 

@@ -129,11 +129,11 @@ app.route("/upload")
 		// @TODO parenting posts, set as parent on current post and tell other post it's a parent now
 		const post = await Post.create({
 			uploader_id: req.data.user.id,
-			tags:        "",
+			tags:        [],
 			sources:     [
 				...sources,
 				...(req.body.url ? [req.body.url] : [])
-			].join("\n"),
+			],
 			rating:      req.body.rating,
 			rating_lock: req.body.rating_lock || null,
 			// parent:      parent === null ? null : parent.id,

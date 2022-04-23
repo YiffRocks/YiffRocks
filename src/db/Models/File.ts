@@ -64,27 +64,26 @@ export default class File implements FileData {
 	}
 
 	static async get(id: number) {
-		const [res] = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: [res] } = await db.query<FileData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new File(res);
 	}
 
 	static async getByMD5(md5: string) {
-		const [res] = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE md5 = ?`, [md5]);
+		const { rows: [res] } = await db.query<FileData>(`SELECT * FROM ${this.TABLE} WHERE md5 = $1`, [md5]);
 		console.log(res);
 		if (!res) return null;
 		return new File(res);
 	}
 
 	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+		return db.delete(this.TABLE, id);
 	}
 
 	static async create(data: FileCreationData) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data, true);
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<number>(this.TABLE, data);
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new file object");
 		return createdObject;
 	}
@@ -94,7 +93,7 @@ export default class File implements FileData {
 	}
 
 	static async getFilesForPost(id: number) {
-		const res = await db.query<Array<FileData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [id]);
+		const { rows: res } = await db.query<FileData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1`, [id]);
 		return res.map(r => new File(r));
 	}
 	async edit(data: Omit<Partial<FileData>, "id">) {

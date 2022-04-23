@@ -42,6 +42,7 @@
     "multer": "^1.4.4",
     "node-fetch": "^3.2.3",
     "on-finished": "^2.4.1",
+    "pg": "^8.7.3",
     "tsafe": "^0.10.0",
     "undici": "^5.0.0"
   },
@@ -57,6 +58,7 @@
     "@types/multer": "^1.4.7",
     "@types/node": "^17.0.25",
     "@types/on-finished": "^2.3.1",
+    "@types/pg": "^8.6.5",
     "@uwu-codes/eslint-config": "^1.0.43",
     "@uwu-codes/tsconfig": "^1.0.1",
     "dpdm": "^3.9.0",

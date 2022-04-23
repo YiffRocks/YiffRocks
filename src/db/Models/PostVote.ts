@@ -5,7 +5,7 @@ import Util from "../../util/Util";
 import { assert } from "tsafe";
 
 export interface PostVoteData {
-	id: bigint;
+	id: string;
 	created_at: string;
 	updated_at: string;
 	user_id: number;
@@ -19,7 +19,7 @@ export type PostVoteCreationData = PostVoteCreationRequired & Partial<Omit<PostV
 
 export default class PostVote implements PostVoteData {
 	static TABLE = "post_votes";
-	id: bigint;
+	id: string;
 	created_at: string;
 	updated_at: string;
 	user_id: number;
@@ -36,42 +36,41 @@ export default class PostVote implements PostVoteData {
 		this.ip_address = data.ip_address;
 	}
 
-	static async get(id: bigint) {
-		const [res] = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+	static async get(id: string) {
+		const { rows: [res] } = await db.query<PostVoteData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new PostVote(res);
 	}
 
 	static async getForUser(id: number) {
-		const res = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE user_id = ?`, [id]);
+		const { rows: res } = await db.query<PostVoteData>(`SELECT * FROM ${this.TABLE} WHERE user_id = $1`, [id]);
 		return res.map(r => new PostVote(r));
 	}
 
 	static async getForPost(id: number) {
-		const res = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ?`, [id]);
+		const { rows: res } = await db.query<PostVoteData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1`, [id]);
 		return res.map(r => new PostVote(r));
 	}
 
 	static async getForPostAndUser(post: number, user: number) {
-		const [res] = await db.query<Array<PostVoteData>>(`SELECT * FROM ${this.TABLE} WHERE post_id = ? AND user_id = ?`, [post, user]);
+		const { rows: [res] } = await db.query<PostVoteData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1 AND user_id = $2`, [post, user]);
 		if (!res) return null;
 		return new PostVote(res);
 	}
 
-	static async delete(id: bigint) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+	static async delete(id: string) {
+		return db.delete(this.TABLE, id);
 	}
 
 	static async create(data: PostVoteCreationData) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data);
-		const createdObject = await this.get(res.insertId);
+		const res = await db.insert<string>(this.TABLE, data);
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new PostVote object");
 		return createdObject;
 	}
 
-	static async edit(id: bigint, data: Omit<Partial<PostVoteData>, "id">) {
+	static async edit(id: string, data: Omit<Partial<PostVoteData>, "id">) {
 		return Util.genericEdit(PostVote, this.TABLE, id, data);
 	}
 

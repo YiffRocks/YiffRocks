@@ -1,3 +1,4 @@
+import TagVersion from "./TagVersion";
 import type { CountResult } from "..";
 import db from "..";
 import Util from "../../util/Util";
@@ -6,13 +7,17 @@ import { assert } from "tsafe";
 export interface TagData {
 	id: number;
 	name: string;
+	category: number;
+	creator_id: number;
 	created_at: string;
 	updated_at: string;
+	version: number;
+	versions: Array<number>;
+	revision: number;
 	post_count: number;
-	category: number;
 	locked: boolean;
 }
-export type TagCreationRequired = Pick<TagData, "name">;
+export type TagCreationRequired = Pick<TagData, "name" | "creator_id">;
 export type TagCreationIgnored = "id" | "created_at" | "updated_at";
 export type TagCreationData = TagCreationRequired & Partial<Omit<TagData, keyof TagCreationRequired | TagCreationIgnored>>;
 
@@ -77,51 +82,71 @@ export default class Tag implements TagData {
 	static TABLE = "tags";
 	id: number;
 	name: string;
+	category: number;
+	creator_id: number;
 	created_at: string;
 	updated_at: string;
+	version: number;
+	versions: Array<number>;
+	revision: number;
 	post_count: number;
-	category: number;
 	locked: boolean;
 	constructor(data: TagData) {
 		this.id         = data.id;
 		this.name       = data.name;
+		this.category   = data.category;
+		this.creator_id = data.creator_id;
 		this.created_at = data.created_at;
 		this.updated_at = data.updated_at;
+		this.version    = data.version;
+		this.versions   = data.versions;
+		this.revision   = data.revision;
 		this.post_count = data.post_count;
-		this.category   = data.category;
-		this.locked     = Boolean(data.locked);
+		this.locked     = data.locked;
 	}
 
 	get categoryName() { return Util.normalizeConstant(TagCategories[this.category]); }
 
 	static async get(id: number) {
-		const [res] = await db.query<Array<TagData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: [res] } = await db.query<TagData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new Tag(res);
 	}
 
 	static async getByName(name: string) {
-		const [res] = await db.query<Array<TagData>>(`SELECT * FROM ${this.TABLE} WHERE name = ?`, [name]);
+		const { rows: [res] } = await db.query<TagData>(`SELECT * FROM ${this.TABLE} WHERE name = $1`, [name]);
 		if (!res) return null;
 		return new Tag(res);
 	}
 
-	static async create(data: TagCreationData) {
+	static async create(data: TagCreationData, ip_address: string | null = null) {
 		Util.removeUndefinedKeys(data);
-		const res = await db.insert(this.TABLE, data, true);
-		const createdObject = await this.get(res.insertId);
+		const ver = await TagVersion.create({
+			name:               data.name,
+			updater_id:         data.creator_id,
+			updater_ip_address: ip_address,
+			category:           data.category,
+			locked:             data.locked
+		}, true);
+		const res = await db.insert<number>(this.TABLE, {
+			...data,
+			version:  ver,
+			revision: 1,
+			versions: [ver]
+		});
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new Tag object");
+		await TagVersion.edit(ver, { tag_id: createdObject.id });
 		return createdObject;
 	}
 
 	static async doesExist(name: string) {
-		const [res] = await db.query<Array<CountResult<"name">>>(`SELECT COUNT(name) FROM ${this.TABLE} WHERE name = ?`, [name]);
-		return Number(res["COUNT(name)"].toString()) > 0;
+		const { rows: [res] } = await db.query<CountResult>(`SELECT COUNT(name) FROM ${this.TABLE} WHERE name = $1`, [name]);
+		return Number(res.count) > 0;
 	}
 
 	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+		return db.delete(this.TABLE, id);
 	}
 
 	static async edit(id: number, data: Omit<Partial<TagData>, "id">) {
@@ -129,13 +154,12 @@ export default class Tag implements TagData {
 	}
 
 	static async getTagType(name: string) {
-		const [res] = await db.query<Array<{ category: number; }>>(`SELECT category FROM ${this.TABLE} WHERE name = ?`, [name]);
+		const { rows: [res] } = await db.query<{ category: number; }>(`SELECT category FROM ${this.TABLE} WHERE name = $1`, [name]);
 		if (!res) return null;
 		return res.category;
 	}
 
-	static async parseTagTypes(data: string) {
-		const tags = data.split(" ").filter(Boolean);
+	static async parseTagTypes(tags: Array<string>) {
 		const types = TagCategoryNames.map(t => ({ [t]: [] as Array<string> })).reduce((a, b) => ({ ...a, ...b }), {});
 		for (const tag of tags) {
 			const type = await this.getTagType(tag);

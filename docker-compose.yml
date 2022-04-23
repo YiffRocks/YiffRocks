@@ -29,18 +29,20 @@ services:
       default:
         ipv4_address: 172.19.3.4
 
-  mariadb:
-    image: mariadb
-    container_name: mariadb.yiff-rocks
+  postgres:
+    image: postgres:12-alpine
+    container_name: postgres.yiff-rocks
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/var/lib/postgresql/data
     restart: always
     environment:
-      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
+      - POSTGRES_USER=yiff-rocks
+      - POSTGRES_DB=yiff-rocks
+      - POSTGRES_HOST_AUTH_METHOD=trust
     healthcheck:
       interval: 5s
       timeout: 2s
-      test: mysqladmin ping
+      test: pg_isready -U yiff-rocks
     networks:
       default:
         ipv4_address: 172.19.3.5

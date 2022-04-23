@@ -24,21 +24,21 @@ export interface PostData {
 	/** local version number, for this post only */
 	revision: number;
 	/** all versions of this post */
-	versions: string;
+	versions: Array<number>;
 	score_up: number;
 	score_down: number;
-	sources: string;
+	sources: Array<string>;
 	favorite_count: number;
-	tags: string;
-	locked_tags: string;
+	tags: Array<string>;
+	locked_tags: Array<string>;
 	flags: number;
 	rating: Ratings;
 	rating_lock: RatingLocks | null;
 	/** array of file ids associated with this post */
-	files: string;
+	files: Array<number>;
 	parent_id: number | null;
-	childeren: string | null;
-	pools: string | null;
+	childeren: Array<number>;
+	pools: Array<number>;
 	description: string;
 	title: string;
 	comment_count: number;
@@ -71,20 +71,20 @@ export default class Post implements PostData {
 	updated_at: string | null;
 	version: number;
 	revision: number;
-	versions: string;
+	versions: Array<number>;
 	score_up: number;
 	score_down: number;
 	favorite_count: number;
-	tags: string;
-	locked_tags: string;
-	sources: string;
+	tags: Array<string>;
+	locked_tags: Array<string>;
+	sources: Array<string>;
 	flags: number;
 	rating: Ratings;
 	rating_lock: RatingLocks | null;
-	files: string;
+	files: Array<number>;
 	parent_id: number | null;
-	childeren: string | null;
-	pools: string | null;
+	childeren: Array<number>;
+	pools: Array<number>;
 	description: string;
 	title: string;
 	comment_count: number;
@@ -120,20 +120,20 @@ export default class Post implements PostData {
 	}
 
 	static async get(id: number) {
-		const [res] = await db.query<Array<PostData>>(`SELECT * FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: [res] } = await db.query<PostData>(`SELECT * FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (!res) return null;
 		return new Post(res);
 	}
 
 	static async getRevisionNumber(id: number) {
-		const res = await db.query<Array<{ revision: number; }>>(`SELECT revision FROM ${this.TABLE} WHERE id = ?`, [id]);
+		const { rows: res } = await db.query<{ revision: number; }>(`SELECT revision FROM ${this.TABLE} WHERE id = $1`, [id]);
 		if (res.length === 0) return 1;
 		return res.map(r => r.revision).sort((a, b) => a - b)[res.length - 1];
 	}
 
 	static async create(data: PostCreationData, ip_address = null) {
 		Util.removeUndefinedKeys(data);
-		const v = await PostVersion.create({
+		const ver = await PostVersion.create({
 			updater_id:         data.uploader_id,
 			updater_ip_address: ip_address,
 			revision:           1,
@@ -146,21 +146,20 @@ export default class Post implements PostData {
 			description:        data.description,
 			title:              data.title
 		}, true);
-		const res = await db.insert(this.TABLE, {
+		const res = await db.insert<number>(this.TABLE, {
 			...data,
-			version:  v,
+			version:  ver,
 			revision: 1,
-			versions: v.toString()
-		}, true);
-		const createdObject = await this.get(res.insertId);
+			versions: [ver]
+		});
+		const createdObject = await this.get(res);
 		assert(createdObject !== null, "failed to create new post object");
-		await PostVersion.edit(v, { post_id: createdObject.id });
+		await PostVersion.edit(ver, { post_id: createdObject.id });
 		return createdObject;
 	}
 
 	static async delete(id: number) {
-		const res = await db.delete(this.TABLE, id);
-		return res.affectedRows > 0;
+		return db.delete(this.TABLE, id);
 	}
 
 	static async edit(id: number, data: Omit<Partial<PostData>, "id">) {
@@ -196,7 +195,7 @@ export default class Post implements PostData {
 		await post.edit({
 			...data,
 			version:  v.id,
-			versions: `${post.versions} ${v.id}`,
+			versions: [...post.versions, v.id],
 			revision: v.revision
 		});
 
@@ -239,33 +238,35 @@ export default class Post implements PostData {
 	}, limit: number, offset: number) {
 		const statements: Array<string> = [];
 		const values: Array<unknown> = [];
+		const selectExtra: Array<string> = [];
 		if (query.uploader_id && !isNaN(query.uploader_id)) {
-			statements.push("uploader_id = ?");
 			values.push(Number(query.uploader_id));
+			statements.push(`uploader_id = $${values.length}`);
 		}
 		if (query.uploader_name) {
 			const id = await User.nameToID(query.uploader_name);
 			if (id !== null) {
-				statements.push("uploader_id = ?");
 				values.push(id);
+				statements.push(`uploader_id = $${values.length}`);
 			}
 		}
 		if (query.approver_id && !isNaN(query.approver_id)) {
-			statements.push("approver_id = ?");
+			statements.push(`approver_id = $${values.length}`);
 			values.push(Number(query.approver_id));
 		}
 		if (query.approver_name) {
 			const id = await User.nameToID(query.approver_name);
 			if (id !== null) {
-				statements.push("approver_id = ?");
 				values.push(id);
+				statements.push(`approver_id = $${values.length}`);
 			}
 		}
 		if (query.sources) {
 			const all = query.sources.split(" ");
 			for (const source of all) {
-				statements.push("sources LIKE ?");
-				values.push(`%${Util.parseWildcards(source)}%`);
+				selectExtra.push("unnest(sources) s");
+				values.push(`%${Util.parseWildcards(source)}`);
+				statements.push(`s LIKE $${values.length}`);
 			}
 		}
 		if (query.tags) {
@@ -274,11 +275,12 @@ export default class Post implements PostData {
 			for (const tag of all) {
 
 				if (tag.includes(Config.wildcardCharacter)) {
-					statements.push("tags LIKE ?");
-					values.push(Util.parseWildcards(tag));
+					selectExtra.push("unnest(tags) t");
+					values.push(`${Util.parseWildcards(tag)}`);
+					statements.push(`t LIKE $${values.length}`);
 				} else {
-					statements.push("FIND_IN_SET(?, REPLACE(tags, ' ', ','))");
 					values.push(tag);
+					statements.push(`tags @> ARRAY[$${values.length}]`);
 				}
 			}
 		}
@@ -286,57 +288,58 @@ export default class Post implements PostData {
 			const all = query.locked_tags.split(" ");
 			for (const tag of all) {
 				if (tag.includes(Config.wildcardCharacter)) {
-					statements.push("locked_tags LIKE ?");
-					values.push(Util.parseWildcards(tag));
+					selectExtra.push("unnest(locked_tags) l;");
+					values.push(`${Util.parseWildcards(tag)}`);
+					statements.push(`l LIKE $${values.length}`);
 				} else {
-					statements.push("FIND_IN_SET(?, REPLACE(locked_tags, ' ', ','))");
 					values.push(tag);
+					statements.push(`locked_tags @> ARRAY[$${values.length}]`);
 				}
 			}
 		}
 		if (query.rating) {
 			const r = query.rating === "e" ? "explicit" : query.rating === "q" ? "questionable" : query.rating === "s" ? "safe" : query.rating;
 			if (VALID_RATINGS.includes(r)) {
-				statements.push("rating = ?");
 				values.push(r);
+				statements.push(`rating = $${values.length}`);
 			}
 		}
 		if (query.rating_lock) {
 			const r = query.rating_lock === "none" ? null : query.rating_lock;
 			if (r === null || VALID_RATING_LOCKS.includes(r)) {
-				statements.push("rating_lock = ?");
 				values.push(r);
+				statements.push(`rating_lock = $${values.length}`);
 			}
 		}
 		if (query.parent_id && !isNaN(query.parent_id)) {
-			statements.push("parent_id = ?");
 			values.push(query.parent_id);
+			statements.push(`parent_id = $${values.length}`);
 		}
 		if (query.childeren) {
 			const all = query.childeren.split(" ");
 			for (const child of all) {
-				statements.push("FIND_IN_SET(?, REPLACE(childeren, ' ', ','))");
 				values.push(child);
+				statements.push(`childeren @> ARRAY[$${values.length}]`);
 			}
 		}
 		if (query.pools) {
 			const all = query.pools.split(" ");
 			for (const pool of all) {
-				statements.push("FIND_IN_SET(?, REPLACE(pools, ' ', ','))");
 				values.push(pool);
+				statements.push(`pools @> ARRAY[$${values.length}]`);
 			}
 		}
 		if (query.description) {
-			statements.push("description LIKE ?");
 			values.push(`%${Util.parseWildcards(query.description)}%`);
+			statements.push(`description LIKE $${values.length}`);
 		}
 		if (query.title) {
-			statements.push("title LIKE ?");
 			values.push(`%${Util.parseWildcards(query.title)}%`);
+			statements.push(`title LIKE $${values.length}`);
 		}
 
-		const res = await db.query<Array<PostData>>(`SELECT * FROM posts${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${offset}, ${limit}`, values);
-		console.log(res.length);
+		console.log(`SELECT * FROM posts${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${limit} OFFSET ${offset}`, values);
+		const { rows: res } = await db.query<PostData>(`SELECT * FROM posts${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${limit} OFFSET ${offset}`, values);
 		return res.map(r => new Post(r));
 	}
 
@@ -364,8 +367,9 @@ export default class Post implements PostData {
 					} else {
 						await Tag.create({
 							name,
-							category: TagCategories[(meta.toUpperCase()) as keyof typeof TagCategories]
-						});
+							category:   TagCategories[(meta.toUpperCase()) as keyof typeof TagCategories],
+							creator_id: user.id
+						}, ipAddress);
 						finalTags.push(name);
 						continue;
 					}
@@ -447,15 +451,16 @@ export default class Post implements PostData {
 				}
 			} else {
 				if (!exists) await Tag.create({
-					name
-				});
+					name,
+					creator_id: user.id
+				}, ipAddress);
 				finalTags.push(name);
 				continue;
 			}
 		}
 
 		await this.editAsUser(user.id, ipAddress, {
-			tags:        finalTags.join(" "),
+			tags:        finalTags,
 			rating:      newRating,
 			rating_lock: newRatingLock
 		});
@@ -531,7 +536,6 @@ export default class Post implements PostData {
 	async getApprover() { return this.approver_id === null ? null : User.get(this.approver_id); }
 
 	// pools
-	get poolIDs() { return this.pools === null ? [] : this.pools.split(" ").map(c => Number(c)); }
 
 	// child & parent
 	// @TODO fix if possible, return post if fixed, null if not fixed
@@ -540,9 +544,8 @@ export default class Post implements PostData {
 		return Promise.resolve(null);
 	}
 
-	get childPosts() { return this.childeren === null ? [] : this.childeren.split(" ").map(c => Number(c)); }
 	async getChildPosts() {
-		return (await Promise.all(this.childPosts.map(async(c) => {
+		return (await Promise.all(this.childeren.map(async(c) => {
 			const post = await Post.get(c);
 			if (post === null) return this.fixChild(c);
 			return post;
@@ -555,7 +558,7 @@ export default class Post implements PostData {
 	async addFile(data: Buffer, flags = 0) {
 		const files = await Config.storageManager.store(data, this.id, flags);
 		await this.edit({
-			files: `${this.files} ${files.map(f => f.id).join(" ")}`.trim()
+			files: [...this.files, ...files.map(f => f.id)]
 		});
 		return {
 			primary: files.find(f => f.is_primary === true),
@@ -600,8 +603,8 @@ export default class Post implements PostData {
 			favorite_count: this.favorite_count,
 			// @TODO tag categories
 			tags:           await Tag.parseTagTypes(this.tags),
-			locked_tags:    this.locked_tags.split(" ").filter(Boolean),
-			sources:        this.sources.split(" ").filter(Boolean),
+			locked_tags:    this.locked_tags,
+			sources:        this.sources,
 			flags:          {
 				...Util.lowercaseKeys(this.parsedFlags),
 				rating_lock: this.rating_lock
@@ -611,8 +614,8 @@ export default class Post implements PostData {
 			relationships: {
 				parent:    this.parent_id,
 				childeren: await this.getChildPosts(),
-				versions:  this.versions.split(" ").map(v => Number(v)),
-				pools:     this.poolIDs
+				versions:  this.versions,
+				pools:     this.pools
 			},
 			description:   this.description,
 			title:         this.title,
