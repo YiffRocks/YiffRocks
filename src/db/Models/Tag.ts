@@ -10,7 +10,7 @@ export interface TagData {
 	category: number;
 	creator_id: number;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	version: number;
 	versions: Array<number>;
 	revision: number;
@@ -21,8 +21,8 @@ export type TagCreationRequired = Pick<TagData, "name" | "creator_id">;
 export type TagCreationIgnored = "id" | "created_at" | "updated_at";
 export type TagCreationData = TagCreationRequired & Partial<Omit<TagData, keyof TagCreationRequired | TagCreationIgnored>>;
 
-// @TODO tag revision and proper versioning
 
+// if you add a type, make sure to add it to the static things like setTags for stats, and formatOrder for ordering
 export enum TagCategories {
 	GENERAL   = 0,
 	ARTIST    = 1,
@@ -41,20 +41,21 @@ export enum TagRestrictions {
 }
 
 export const BooleanMetaTags = [
-	"hassource", "hasdescription", "tagslocked", "isparent", "ischild", "inpool",
+	"hassources", "hasdescription", "hastitle", "haslockedtags", "isparent", "ischild", "inpool",
 	"approved", "deleted", "pending"
 ] as Array<string>;
 export const FunctionalMetaTags = [
 	"newpool", "pool", "set", "vote", "fav", "lock", "locked", "rating"
 ];
+// @TODO (search): commenter, commenter_id, flagger, flagger_id, del, del_id, delreason
 export const SearchMetaTags = [
 	...BooleanMetaTags,
-	"user", "user_id", "approver", "commenter", "flagger", "del",
+	"user", "user_id", "approver", "approver_id", "commenter", "commenter_id", "flagger", "flagger_id", "del", "del_id",
 	"id", "pool", "parent", "child",
-	"lock", "locked", "score", "favcount", "filesize", "filetype", "duration",
-	"description", "delreason", "title", "source",
+	"rating", "lock", "locked", "score", "favcount", "commentcount", "filesize", "duration", "type",
+	"delreason", "description", "title", "source",
 	"votedup", "voteddown",
-	"order", "limit"
+	"order", "limit", "page", "md5"
 ];
 export const OrderTypes = [
 	"id",            "id_desc",             "id_asc",             // default: asc
@@ -70,9 +71,9 @@ export const OrderTypes = [
 	"tagcount",      "tagcount_desc",      "tagcount_asc",        // default: desc
 	"duration",      "duration_desc",      "duration_asc",        // default: desc
 	...(TagCategoryNames.map(key => [
-		`${key}_tags`, `${key}_tags_desc`, `${key}_tags_asc` // default: desc
+		`tagcount_${key}`, `tagcount_${key}_desc`, `tagcount_${key}_asc` // default: desc
 	])).reduce((a, b) => a.concat(b), []),
-	"popular", "random"
+	"popular", "random" // @TODO popular
 ].map(v => v.toLowerCase());
 export const MetaTags = Array.from(new Set([
 	...FunctionalMetaTags,
@@ -85,7 +86,7 @@ export default class Tag implements TagData {
 	category: number;
 	creator_id: number;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	version: number;
 	versions: Array<number>;
 	revision: number;
@@ -117,6 +118,17 @@ export default class Tag implements TagData {
 		const { rows: [res] } = await db.query<TagData>(`SELECT * FROM ${this.TABLE} WHERE name = $1`, [name]);
 		if (!res) return null;
 		return new Tag(res);
+	}
+
+	static async getCategory(name: string) {
+		const { rows: [res] } = await db.query<{ category: number; }>(`SELECT category FROM ${this.TABLE} WHERE name = $1`, [name]);
+		if (!res) return null;
+		return res.category;
+	}
+
+	static async getCategories(names: Array<string>) {
+		const { rows: res } = await db.query<{ name: string; category: number; }>(`SELECT name, category FROM tags WHERE name = ANY(ARRAY[${names.map((n, index) => `$${index + 1}`).join(", ")}])`, [...names]);
+		return res.map(r => ({ [r.name]: r.category })).reduce((a, b) => ({ ...a, ...b }), {});
 	}
 
 	static async create(data: TagCreationData, ip_address: string | null = null) {
@@ -153,22 +165,18 @@ export default class Tag implements TagData {
 		return Util.genericEdit(Tag, this.TABLE, id, data);
 	}
 
-	static async getTagType(name: string) {
-		const { rows: [res] } = await db.query<{ category: number; }>(`SELECT category FROM ${this.TABLE} WHERE name = $1`, [name]);
-		if (!res) return null;
-		return res.category;
-	}
-
 	static async parseTagTypes(tags: Array<string>) {
-		const types = TagCategoryNames.map(t => ({ [t]: [] as Array<string> })).reduce((a, b) => ({ ...a, ...b }), {});
+		const types = await this.getCategories(tags);
+		const res = Util.enumKeys(TagCategories).map(key => ({
+			[key.toLowerCase()]: [] as Array<string>
+		})).reduce((a, b) => ({ ...a, ...b }), {});
 		for (const tag of tags) {
-			const type = await this.getTagType(tag);
-			if (type === null) {
-				if (!types.unknown) types.unknown = [];
-				types.unknown.push(tag);
-			} else types[TagCategories[type].toLowerCase()].push(tag);
+			if (typeof types[tag] !== "number") {
+				if (!types.unknown) res.unknown = [];
+				res.unknown.push(tag);
+			} else res[TagCategories[types[tag]].toLowerCase()].push(tag);
 		}
-		return types;
+		return res as Record<Lowercase<keyof typeof TagCategories>, Array<string>>;
 	}
 
 	static parseMetaTag(tag: string, validMeta = [...MetaTags, ...TagCategoryNames]): [metatag: string | null, name: string] {

@@ -8,10 +8,7 @@ CREATE TABLE public.posts (
 	version              INT           NOT NULL REFERENCES public.post_versions (id),
 	versions             INT[]         NOT NULL,
 	revision             INT           NOT NULL DEFAULT 0,
-	score_up             INT           NOT NULL DEFAULT 0,
-	score_down           INT           NOT NULL DEFAULT 0,
 	sources              TEXT[]        NOT NULL DEFAULT '{}',
-	favorite_count       INT           NOT NULL DEFAULT 0,
 	tags                 TEXT[]        NOT NULL DEFAULT '{}',
 	locked_tags          TEXT[]        NOT NULL DEFAULT '{}',
 	-- 1 (PENDING)
@@ -19,14 +16,29 @@ CREATE TABLE public.posts (
 	rating               RATING        NOT NULL DEFAULT 'explicit',
 	rating_lock          RATING_LOCK   NULL,
 	files                INT[]         NOT NULL DEFAULT '{}',
+	filesize             INT           NOT NULL DEFAULT 0,
 	parent_id            INT           NULL REFERENCES public.posts (id),
-	childeren            INT[]         NOT NULL DEFAULT '{}',
+	children             INT[]         NOT NULL DEFAULT '{}',
 	pools                INT[]         NOT NULL DEFAULT '{}',
 	description          TEXT          NOT NULL DEFAULT '',
 	title                TEXT          NOT NULL DEFAULT '',
-	comment_count        INT           NOT NULL DEFAULT 0,
 	duration             INT           NULL,
-	type                 FILE_TYPE     NOT NULL DEFAULT 'unknown'
+	type                 FILE_TYPE     NOT NULL DEFAULT 'unknown',
+	-- stats
+	score_up             INT           NOT NULL DEFAULT 0,
+	score_down           INT           NOT NULL DEFAULT 0,
+	score                INT           NOT NULL DEFAULT 0,
+	favorite_count       INT           NOT NULL DEFAULT 0,
+	comment_count        INT           NOT NULL DEFAULT 0,
+	tag_count            INT           NOT NULL DEFAULT 0,
+	tag_count_general    INT           NOT NULL DEFAULT 0,
+	tag_count_artist     INT           NOT NULL DEFAULT 0,
+	tag_count_copyright  INT           NOT NULL DEFAULT 0,
+	tag_count_character  INT           NOT NULL DEFAULT 0,
+	tag_count_species    INT           NOT NULL DEFAULT 0,
+	tag_count_invalid    INT           NOT NULL DEFAULT 0,
+	tag_count_lore       INT           NOT NULL DEFAULT 0,
+	tag_count_meta       INT           NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX ON public.posts (id, revision);

@@ -1,31 +1,15 @@
 import Config from "../src/config";
 import Post from "../src/db/Models/Post";
 import User from "../src/db/Models/User";
-import type { Ratings , Post as E621Post, PostProperties } from "e621";
+import type { Ratings , PostProperties } from "e621";
 import E621 from "e621";
-import fetch from "node-fetch";
 import { assert } from "tsafe";
-import { access, mkdir, writeFile } from "fs/promises";
+import { access, mkdir, readFile } from "fs/promises";
 
-async function downloadFile(url: string): Promise<Buffer> {
-	try {
-		const c = new AbortController();
-		const t = setTimeout(() => c.abort(), 1e4);
-		return fetch(url, { signal: c.signal }).then(async(res) => {
-			clearTimeout(t);
-			const buf = Buffer.from(await res.arrayBuffer());
-			if (saveResults) await writeFile(`${__dirname}/../test/post_files/${Buffer.from(url).toString("base64")}`, buf);
-			return buf;
-		}).catch(() => downloadFile(url));
-	} catch {
-		return downloadFile(url);
-	}
-}
-const convertRating = (r: Ratings) => r === "s" ? "safe" : r === "q" ? "questionable" : r === "e" ? "explicit" : "unknown" as never;
 const __dirname = new URL(".", import.meta.url).pathname;
+const posts = JSON.parse((await readFile(`${__dirname}/../test/posts.json`)).toString()) as Array<PostProperties>;
+const convertRating = (r: Ratings) => r === "s" ? "safe" : r === "q" ? "questionable" : r === "e" ? "explicit" : "unknown" as never;
 
-const postsEach = 25;
-const sharedTags = " order:random score:>300 male -female solo -young -scat -watersports -vore -gore -diaper";
 const adminUser = await User.get(1);
 assert(adminUser !== null, "null admin user");
 
@@ -36,12 +20,10 @@ const e6 = new E621({
 
 const saveResults = true;
 if (saveResults) if (!await access(`${__dirname}/../test/post_files`).then(() => true, () => false)) await mkdir(`${__dirname}/../test/post_files`);
-const rawPosts: Array<PostProperties> = [];
-// this will download and add all parent & child posts, even nested ones, so post numbers can easily multiply from 2 or 3x
 const downloadedPosts: Array<number> = [];
-async function addPost(type: string, post: E621Post) {
+async function addPost(type: string, post: PostProperties) {
 	if (!downloadedPosts.includes(post.id)) {
-		console.log("Pulling down post #%d for %s (%s)", post.id, type, post.file.url);
+		console.log("Restoring post #%d for %s (%s)", post.id, type, post.file.url);
 		const p = await Post.create({
 			uploader_id: adminUser!.id,
 			rating:      convertRating(post.rating),
@@ -50,11 +32,10 @@ async function addPost(type: string, post: E621Post) {
 		});
 		await p.approve(adminUser!.id);
 		await p.setTags(adminUser!, null, Object.entries(post.tags).map(([category, tags]) => tags.map(t => `${category}:${t}`)).reduce((a, b) => a.concat(b), []).join(" "));
-		const file = await downloadFile(post.file.url);
+		const file = await readFile(`${__dirname}/../test/post_files/${Buffer.from(post.file.url).toString("base64")}`);
 		await p.setFile(file);
-		if (saveResults) rawPosts.push(post);
 		downloadedPosts.push(post.id);
-		console.log("Created post #%d", p.id);
+		console.log("Restored post #%d", p.id);
 		if (post.relationships.children.length > 0) {
 			for (const child of post.relationships.children) {
 				const childPost = await e6.posts.get(child);
@@ -75,37 +56,19 @@ async function addPost(type: string, post: E621Post) {
 	} else return { id: 0 };
 }
 
-const videoPosts = await e6.posts.search({
-	tags:  `type:webm ${sharedTags}`,
-	limit: postsEach
-});
+const videoPosts = posts.filter(p => p.file.ext === "webm");
 for (const post of videoPosts) await addPost("video", post);
 
-const gifPosts = await e6.posts.search({
-	tags:  `type:gif ${sharedTags}`,
-	limit: postsEach
-});
+const gifPosts = posts.filter(p => p.file.ext === "gif");
 for (const post of gifPosts)  await addPost("gif", post);
 
-const apngPosts = await e6.posts.search({
-	// we can't really filter much here because e621 has less than 50 of these
-	tags:  "type:png animated order:random male -female solo",
-	limit: postsEach
-});
+const apngPosts = posts.filter(p => p.file.ext === "apng");
 for (const post of apngPosts) await addPost("apng", post);
 
-const pngPosts = await e6.posts.search({
-	tags:  `type:png ${sharedTags}`,
-	limit: postsEach
-});
+const pngPosts = posts.filter(p => p.file.ext === "png");
 for (const post of pngPosts) await addPost("png", post);
 
-const jpegPosts = await e6.posts.search({
-	tags:  `type:jpg ${sharedTags}`,
-	limit: postsEach
-});
+const jpegPosts = posts.filter(p => p.file.ext === "jpg");
 for (const post of jpegPosts) await addPost("jpeg", post);
-
-if (saveResults) await writeFile(`${__dirname}/../test/posts.json`, JSON.stringify(rawPosts));
 
 process.exit(0);

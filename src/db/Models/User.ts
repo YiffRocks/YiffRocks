@@ -349,6 +349,12 @@ export default class User implements UserData {
 		return this[type];
 	}
 
+	async setStat(type: keyof UserStats, value: number) {
+		this[type] = value;
+		await this.edit({ [type]: this[type] });
+		return this[type];
+	}
+
 	get apiBurstLimit() {
 		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 120;
 		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 90;

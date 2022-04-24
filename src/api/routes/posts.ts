@@ -7,10 +7,12 @@ import PostVersion from "../../db/Models/PostVersion";
 import Config from "../../config/index";
 import ProxyRequest from "../../util/ProxyRequest";
 import Util from "../../util/Util";
+import type { FileData } from "../../db/Models/File";
 import File from "../../db/Models/File";
 import authCheck from "../../util/authCheck";
-import PostVote from "../../db/Models/PostVote";
+import type PostVote from "../../db/Models/PostVote";
 import { UserLevels } from "../../db/Models/User";
+import db from "../../db";
 import type { Request } from "express";
 import { Router } from "express";
 import multer from "multer";
@@ -38,15 +40,20 @@ app.route("/")
 		rating?: Ratings | "e" | "q" | "s";
 		rating_lock?: RatingLocks | "none";
 		parent_id?: string;
-		childeren?: string;
+		children?: string;
 		pools?: string;
 		description?: string;
 		title?: string;
 		limit?: string;
 		page?: string;
+		md5?: string;
 	}>, res) => {
+		if (req.query.md5) {
+			const file = await File.getByMD5(req.query.md5);
+			if (file === null) return res.status(404).json(PostErrors.NOT_FOUND_MD5);
+		}
 		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
-		const posts = await Post.search({
+		const searchResult = await Post.search({
 			uploader_id:   !req.query.uploader_id   ? undefined : Number(req.query.uploader_id),
 			uploader_name: !req.query.uploader_name ? undefined : req.query.uploader_name,
 			approver_id:   !req.query.approver_id   ? undefined : Number(req.query.approver_id),
@@ -57,12 +64,21 @@ app.route("/")
 			rating:        !req.query.rating        ? undefined : req.query.rating,
 			rating_lock:   !req.query.rating_lock   ? undefined : req.query.rating_lock,
 			parent_id:     !req.query.parent_id     ? undefined : Number(req.query.parent_id),
-			childeren:     !req.query.childeren     ? undefined : req.query.childeren,
+			children:      !req.query.children     ? undefined : req.query.children,
 			pools:         !req.query.pools         ? undefined : req.query.pools,
 			description:   !req.query.description   ? undefined : req.query.description,
 			title:         !req.query.title         ? undefined : req.query.title
-		}, limit, offset);
-		return res.status(200).json(await Promise.all(posts.map(p => p.toJSON())));
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset);
+		const posts = await Promise.all(searchResult.map(p => p.toJSON(false)));
+		if (posts.length === 0) return res.status(200).json([]);
+		const indexes = posts.map((p, index) => ({ [p.id]: index })).reduce((a, b) => ({ ...a, ...b }), {});
+		const { rows: files } = await db.query<FileData>(`SELECT * FROM files WHERE id = ANY(Array[${posts.map(p => p.files).reduce((a, b) => (a as Array<number>).concat(b as Array<number>), [] as Array<number>).join(", ")}])`);
+		posts.forEach((p, index) => posts[index].files = []);
+		// delay fetching files until the end so we can bulk fetch them
+		// we can probably do better than this but this is what I came up with, and it
+		// should work just fine for the time being
+		for (const file of files) (posts[indexes[file.post_id]].files as Array<unknown>).push(new File(file).toJSON());
+		return res.status(200).json(posts);
 	});
 
 app.route("/upload")
@@ -91,7 +107,6 @@ app.route("/upload")
 		if (!Config.allowedMimeTypes.includes(type.mime)) return res.status(400).json(PostErrors.INVALID_FILE_TYPE.format(type.mime));
 		const hash = Util.md5(file);
 		const exists = await File.getByMD5(hash);
-		console.log(hash, exists);
 		if (exists !== null) return res.status(400).json(PostErrors.DUPLICATE_UPLOAD.withExtra({ post: exists.id }));
 
 		const tags = req.body.tags?.split(" ");
@@ -144,7 +159,7 @@ app.route("/upload")
 		await req.data.user.incrementStat("upload_count");
 		const errors = await post.setTags(req.data.user, req.ip, req.body.tags);
 
-		const files = await post.addFile(file);
+		const files = await post.setFile(file);
 
 		return res.status(201).json({
 			errors,
@@ -189,7 +204,7 @@ app.route("/:id/versions/:revision")
 
 app.route("/:id/votes")
 	.all(apiHeaders(["OPTIONS", "PUT"]), authCheck("json"))
-	.put(async(req: Request<{ id: string; }, unknown, { type: PostVote["type"]; }>, res) => {
+	.put(async(req: Request<{ id: string; }, unknown, { type: PostVote["type"]; }, { post?: string; }>, res) => {
 		assert(req.data.user !== undefined, "undefined user");
 		const type = req.body.type;
 		if (!["down", "none", "up"].includes(type)) return res.status(400).json(PostErrors.INVALID_VOTE_TYPE);
@@ -197,22 +212,9 @@ app.route("/:id/votes")
 		if (isNaN(id)) return res.status(400).json(GeneralErrors.INVALID_ID);
 		const post = await Post.get(id);
 		if (post === null) return res.status(404).json(PostErrors.INVALID);
-		const prev = await PostVote.getForPostAndUser(req.data.user.id, post.id);
-		if (prev === null) {
-			if (type === "none") return res.status(204).end();
-			const vote = await PostVote.create({
-				user_id:    req.data.user.id,
-				post_id:    post.id,
-				type,
-				ip_address: req.ip
-			});
-			return res.status(201).json(await vote.toJSON(true));
-		} else {
-			await prev.edit({
-				type: type === prev.type ? "none" : type
-			});
-			return res.status(200).json(await prev.toJSON(true));
-		}
+		const vote = await post.vote(req.data.user.id, req.body.type, req.ip);
+		if (vote === null) return res.status(204).end();
+		return res.status(vote.updated_at === null ? 201 : 200).json(await vote.toJSON(!["false", "0"].includes(req.query.post || "true")));
 	});
 
 export default app;

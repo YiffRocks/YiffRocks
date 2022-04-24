@@ -7,7 +7,7 @@ import { assert } from "tsafe";
 export interface FileData {
 	id: number;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	post_id: number;
 	md5: string;
 	// primary is reserved in sql
@@ -20,8 +20,9 @@ export interface FileData {
 	flags: number;
 	// the parent of this file, if not primary (typically conversions or previews)
 	parent_id: number;
+	size: number;
 }
-export type FileCreationRequired = Pick<FileData, "post_id" | "md5" | "type" | "mime" | "ext" | "width" | "height">;
+export type FileCreationRequired = Pick<FileData, "post_id" | "md5" | "type" | "mime" | "ext" | "width" | "height" | "size">;
 export type FileCreationIgnored = "id" | "created_at" | "updated_at";
 export type FileCreationData = FileCreationRequired & Partial<Omit<FileData, keyof FileCreationRequired | FileCreationIgnored>>;
 
@@ -36,7 +37,7 @@ export default class File implements FileData {
 	static TABLE = "files";
 	id: number;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	post_id: number;
 	md5: string;
 	is_primary: boolean;
@@ -47,6 +48,7 @@ export default class File implements FileData {
 	height: number;
 	flags: number;
 	parent_id: number;
+	size: number;
 	constructor(data: FileData) {
 		this.id         = data.id;
 		this.created_at = data.created_at;
@@ -61,6 +63,7 @@ export default class File implements FileData {
 		this.height     = data.height;
 		this.flags      = data.flags;
 		this.parent_id  = data.parent_id;
+		this.size       = data.size;
 	}
 
 	static async get(id: number) {
@@ -74,6 +77,11 @@ export default class File implements FileData {
 		console.log(res);
 		if (!res) return null;
 		return new File(res);
+	}
+
+	static async getBulk(files: Array<number>) {
+		const { rows: res } = await db.query<FileData>(`SELECT * FROM files WHERE id = ANY(ARRAY[${files.join(",")}])`);
+		return res.map(f => new File(f));
 	}
 
 	static async delete(id: number) {
@@ -123,6 +131,10 @@ export default class File implements FileData {
 		return Post.get(this.post_id);
 	}
 
+	// JSON.stringify uses toJSON if present
+	getRawData() {
+		return Object.entries(this).map(([key, value]) => ({ [key]: value as unknown })).reduce((a, b) => ({ ...a, ...b }), {});
+	}
 
 	toJSON() {
 		return {

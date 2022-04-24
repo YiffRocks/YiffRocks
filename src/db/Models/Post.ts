@@ -1,17 +1,20 @@
 import User from "./User";
-import File from "./File";
 import PostVersion from "./PostVersion";
 import PostVote from "./PostVote";
 import Favorite from "./Favorite";
 import Tag, { FunctionalMetaTags, TagCategories, TagCategoryNames } from "./Tag";
+import File from "./File";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
 import TagNameValidator from "../../logic/TagNameValidator";
+import PostSearch from "../../logic/search/PostSearch";
 import { assert } from "tsafe";
 
 export type PostStats = Record<
-"favorite_count" | "comment_count",
+"favorite_count" | "comment_count" |
+"tag_count_general" | "tag_count_artist" | "tag_count_copyright" | "tag_count_character" |
+"tag_count_species" | "tag_count_invalid" | "tag_count_lore" | "tag_count_meta",
 number>;
 export interface PostData {
 	id: number;
@@ -25,10 +28,7 @@ export interface PostData {
 	revision: number;
 	/** all versions of this post */
 	versions: Array<number>;
-	score_up: number;
-	score_down: number;
 	sources: Array<string>;
-	favorite_count: number;
 	tags: Array<string>;
 	locked_tags: Array<string>;
 	flags: number;
@@ -36,14 +36,29 @@ export interface PostData {
 	rating_lock: RatingLocks | null;
 	/** array of file ids associated with this post */
 	files: Array<number>;
+	filesize: number; // 0 if no associated files, this is the size of the primary file
 	parent_id: number | null;
-	childeren: Array<number>;
+	children: Array<number>;
 	pools: Array<number>;
 	description: string;
 	title: string;
-	comment_count: number;
 	duration: number | null;
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	// stats
+	score_up: number;
+	score_down: number;
+	score: number;
+	favorite_count: number;
+	comment_count: number;
+	tag_count: number;
+	tag_count_general: number;
+	tag_count_artist: number;
+	tag_count_copyright: number;
+	tag_count_character: number;
+	tag_count_species: number;
+	tag_count_invalid: number;
+	tag_count_lore: number;
+	tag_count_meta: number;
 }
 export type PostCreationRequired = Pick<PostData, "uploader_id">;
 export type PostCreationIgnored = "id" | "created_at" | "updated_at" | "version" | "revision";
@@ -72,9 +87,6 @@ export default class Post implements PostData {
 	version: number;
 	revision: number;
 	versions: Array<number>;
-	score_up: number;
-	score_down: number;
-	favorite_count: number;
 	tags: Array<string>;
 	locked_tags: Array<string>;
 	sources: Array<string>;
@@ -82,41 +94,67 @@ export default class Post implements PostData {
 	rating: Ratings;
 	rating_lock: RatingLocks | null;
 	files: Array<number>;
+	filesize: number;
 	parent_id: number | null;
-	childeren: Array<number>;
+	children: Array<number>;
 	pools: Array<number>;
 	description: string;
 	title: string;
 	comment_count: number;
 	duration: number | null;
 	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	// stats
+	score_up: number;
+	score_down: number;
+	score: number;
+	favorite_count: number;
+	tag_count: number;
+	tag_count_general: number;
+	tag_count_artist: number;
+	tag_count_copyright: number;
+	tag_count_character: number;
+	tag_count_species: number;
+	tag_count_invalid: number;
+	tag_count_lore: number;
+	tag_count_meta: number;
 	constructor(data: PostData) {
 		this.id = data.id;
-		this.uploader_id = data.uploader_id;
-		this.approver_id = data.approver_id;
-		this.created_at = data.created_at;
-		this.updated_at = data.updated_at;
-		this.version = data.version;
-		this.revision = data.revision ?? 0;
-		this.versions = data.versions ?? "";
-		this.score_up = data.score_up ?? 0;
-		this.score_down = data.score_down ?? 0;
-		this.favorite_count = data.favorite_count ?? 0;
-		this.tags = data.tags;
-		this.locked_tags = data.locked_tags ?? "";
-		this.sources = data.sources ?? "";
-		this.flags = data.flags ?? 0;
-		this.rating = data.rating ?? "explicit";
-		this.rating_lock = data.rating_lock;
-		this.files = data.files ?? "";
-		this.parent_id = data.parent_id;
-		this.childeren = data.childeren;
-		this.pools = data.pools;
-		this.description = data.description;
-		this.title = data.title;
-		this.comment_count = data.comment_count;
-		this.duration = data.duration;
-		this.type = data.type;
+		this.uploader_id        = data.uploader_id;
+		this.approver_id         = data.approver_id;
+		this.created_at          = data.created_at;
+		this.updated_at          = data.updated_at;
+		this.version             = data.version;
+		this.revision            = data.revision;
+		this.versions            = data.versions;
+		this.tags                = data.tags;
+		this.locked_tags         = data.locked_tags;
+		this.sources             = data.sources;
+		this.flags               = data.flags;
+		this.rating              = data.rating;
+		this.rating_lock         = data.rating_lock;
+		this.files               = data.files;
+		this.filesize            = data.filesize;
+		this.parent_id           = data.parent_id;
+		this.children           = data.children;
+		this.pools               = data.pools;
+		this.description         = data.description;
+		this.title               = data.title;
+		this.comment_count       = data.comment_count;
+		this.duration            = data.duration;
+		this.type                = data.type;
+		this.score_up            = data.score_up;
+		this.score_down          = data.score_down;
+		this.score               = data.score;
+		this.favorite_count      = data.favorite_count;
+		this.tag_count           = data.tag_count;
+		this.tag_count_general   = data.tag_count_general;
+		this.tag_count_artist    = data.tag_count_artist;
+		this.tag_count_copyright = data.tag_count_copyright;
+		this.tag_count_character = data.tag_count_character;
+		this.tag_count_species   = data.tag_count_species;
+		this.tag_count_invalid   = data.tag_count_invalid;
+		this.tag_count_lore      = data.tag_count_lore;
+		this.tag_count_meta      = data.tag_count_meta;
 	}
 
 	static async get(id: number) {
@@ -202,22 +240,94 @@ export default class Post implements PostData {
 		return Post.get(id);
 	}
 
-	static async vote(post: number, user: number, type: "down" | "none" | "up", ip_address: string | null = null) {
-		const currentVote = await PostVote.getForPostAndUser(post, user);
+	/**
+	 * Create a vote on a post
+	 *
+	 * @param id - the id of the post
+	 * @param user - the id of the user
+	 * @param type - the type of vote (duplicates will convert to none)
+	 * @param ip_address - the ip address of the user
+	 * @returns null if type is "none" & no previous, PostVote instance otherwise
+	 */
+	static async vote(id: number, user: number, type: "down" | "none" | "up", ip_address: string | null = null) {
+		// @TODO refactor to either do this without fetching or some other way that's less clunky
+		const post = await Post.get(id);
+		assert(post !== null);
+		const currentVote = await PostVote.getForPostAndUser(id, user);
 		if (currentVote) {
 			if (currentVote.type === "none" && type === "none") return currentVote;
-			if (type === currentVote.type) type = "none";
-			const r = await currentVote.edit({ type, ip_address });
-			if (!r) process.emitWarning(`Post#vote modification changed 0 rows. (post: ${post}, user: ${user}, vote: ${currentVote.id} -  ${currentVote.type} -> ${type})`);
+			if (type === "up") {
+				if (currentVote.type === "up") {
+					post.score_up--;
+					post.score--;
+				} else {
+					if (currentVote.type === "down") {
+						post.score_down++;
+						post.score++;
+					}
+					post.score_up++;
+					post.score++;
+				}
+
+				await post.edit({
+					score_up:   post.score_up,
+					score_down: post.score_down,
+					score:      post.score
+				});
+			} else if (type === "down") {
+				if (currentVote.type === "down") {
+					post.score_down++;
+					post.score++;
+				} else {
+					if (currentVote.type === "up") {
+						post.score_up--;
+						post.score--;
+					}
+					post.score_down--;
+					post.score--;
+				}
+
+				await post.edit({
+					score_up:   post.score_up,
+					score_down: post.score_down,
+					score:      post.score
+				});
+			}
+			const r = await currentVote.edit({ type: currentVote.type === type ? "none" : type, ip_address });
+			if (!r) process.emitWarning(`Post#vote modification changed 0 rows. (post: ${post.id}, user: ${user}, vote: ${currentVote.id} -  ${currentVote.type} -> ${type})`);
 			return currentVote;
 		} else {
+			if (type === "none") return null;
+			if (type === "up") {
+				await post.edit({
+					score_up: ++post.score_up,
+					score:    ++post.score
+				});
+			} else if (type === "down") {
+				await post.edit({
+					score_down: --post.score_down,
+					score:      --post.score
+				});
+			}
 			return PostVote.create({
-				post_id: post,
+				post_id: post.id,
 				user_id: user,
 				type,
 				ip_address
 			});
 		}
+	}
+
+	static async setParent(post: number, parent: number, blame: number, ipAddress: string | null = null) {
+		await Post.editAsUser(post, blame, ipAddress, { parent_id: parent });
+		await Post.addChild(parent, post, blame);
+	}
+
+	static async addChild(post: number, child: number, blame: number, ipAddress: string | null = null) {
+		const { rows: [{ children }] } = await db.query<{ children: Array<number>; }>(`SELECT children FROM ${this.TABLE} WHERE id = $1`, [post]);
+		await Post.editAsUser(post, blame, ipAddress, {
+			children: [...children, child]
+		});
 	}
 
 	static async search(query: {
@@ -231,115 +341,13 @@ export default class Post implements PostData {
 		rating?: Ratings | "e" | "q" | "s";
 		rating_lock?: RatingLocks | "none";
 		parent_id?: number;
-		childeren?: string;
+		children?: string;
 		pools?: string;
 		description?: string;
 		title?: string;
-	}, limit: number, offset: number) {
-		const statements: Array<string> = [];
-		const values: Array<unknown> = [];
-		const selectExtra: Array<string> = [];
-		if (query.uploader_id && !isNaN(query.uploader_id)) {
-			values.push(Number(query.uploader_id));
-			statements.push(`uploader_id = $${values.length}`);
-		}
-		if (query.uploader_name) {
-			const id = await User.nameToID(query.uploader_name);
-			if (id !== null) {
-				values.push(id);
-				statements.push(`uploader_id = $${values.length}`);
-			}
-		}
-		if (query.approver_id && !isNaN(query.approver_id)) {
-			statements.push(`approver_id = $${values.length}`);
-			values.push(Number(query.approver_id));
-		}
-		if (query.approver_name) {
-			const id = await User.nameToID(query.approver_name);
-			if (id !== null) {
-				values.push(id);
-				statements.push(`approver_id = $${values.length}`);
-			}
-		}
-		if (query.sources) {
-			const all = query.sources.split(" ");
-			for (const source of all) {
-				selectExtra.push("unnest(sources) s");
-				values.push(`%${Util.parseWildcards(source)}`);
-				statements.push(`s LIKE $${values.length}`);
-			}
-		}
-		if (query.tags) {
-			const all = query.tags.split(" ");
-			// @TODO revisit this as it might have some weird outcomes
-			for (const tag of all) {
-
-				if (tag.includes(Config.wildcardCharacter)) {
-					selectExtra.push("unnest(tags) t");
-					values.push(`${Util.parseWildcards(tag)}`);
-					statements.push(`t LIKE $${values.length}`);
-				} else {
-					values.push(tag);
-					statements.push(`tags @> ARRAY[$${values.length}]`);
-				}
-			}
-		}
-		if (query.locked_tags) {
-			const all = query.locked_tags.split(" ");
-			for (const tag of all) {
-				if (tag.includes(Config.wildcardCharacter)) {
-					selectExtra.push("unnest(locked_tags) l;");
-					values.push(`${Util.parseWildcards(tag)}`);
-					statements.push(`l LIKE $${values.length}`);
-				} else {
-					values.push(tag);
-					statements.push(`locked_tags @> ARRAY[$${values.length}]`);
-				}
-			}
-		}
-		if (query.rating) {
-			const r = query.rating === "e" ? "explicit" : query.rating === "q" ? "questionable" : query.rating === "s" ? "safe" : query.rating;
-			if (VALID_RATINGS.includes(r)) {
-				values.push(r);
-				statements.push(`rating = $${values.length}`);
-			}
-		}
-		if (query.rating_lock) {
-			const r = query.rating_lock === "none" ? null : query.rating_lock;
-			if (r === null || VALID_RATING_LOCKS.includes(r)) {
-				values.push(r);
-				statements.push(`rating_lock = $${values.length}`);
-			}
-		}
-		if (query.parent_id && !isNaN(query.parent_id)) {
-			values.push(query.parent_id);
-			statements.push(`parent_id = $${values.length}`);
-		}
-		if (query.childeren) {
-			const all = query.childeren.split(" ");
-			for (const child of all) {
-				values.push(child);
-				statements.push(`childeren @> ARRAY[$${values.length}]`);
-			}
-		}
-		if (query.pools) {
-			const all = query.pools.split(" ");
-			for (const pool of all) {
-				values.push(pool);
-				statements.push(`pools @> ARRAY[$${values.length}]`);
-			}
-		}
-		if (query.description) {
-			values.push(`%${Util.parseWildcards(query.description)}%`);
-			statements.push(`description LIKE $${values.length}`);
-		}
-		if (query.title) {
-			values.push(`%${Util.parseWildcards(query.title)}%`);
-			statements.push(`title LIKE $${values.length}`);
-		}
-
-		console.log(`SELECT * FROM posts${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${limit} OFFSET ${offset}`, values);
-		const { rows: res } = await db.query<PostData>(`SELECT * FROM posts${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`} LIMIT ${limit} OFFSET ${offset}`, values);
+	}, limit?: number, offset?: number) {
+		const [sql, values] = await PostSearch.constructQuery(query, limit, offset);
+		const { rows: res } = await db.query<PostData>(sql, values);
 		return res.map(r => new Post(r));
 	}
 
@@ -459,14 +467,25 @@ export default class Post implements PostData {
 			}
 		}
 
+		const categorized = await Tag.parseTagTypes(finalTags);
 		await this.editAsUser(user.id, ipAddress, {
-			tags:        finalTags,
-			rating:      newRating,
-			rating_lock: newRatingLock
+			tags:                finalTags,
+			rating:              newRating,
+			rating_lock:         newRatingLock,
+			tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
+			tag_count_general:   categorized.general.length,
+			tag_count_artist:    categorized.artist.length,
+			tag_count_copyright: categorized.copyright.length,
+			tag_count_character: categorized.character.length,
+			tag_count_species:   categorized.species.length,
+			tag_count_invalid:   categorized.invalid.length,
+			tag_count_lore:      categorized.lore.length,
+			tag_count_meta:      categorized.meta.length
 		});
 
 		return errors;
 	}
+
 	async delete() {
 		return Post.delete(this.id);
 	}
@@ -480,8 +499,8 @@ export default class Post implements PostData {
 		return Post.editAsUser(this.id, updater, ipAddress, data);
 	}
 
-	async vote(user: number, type: "down" | "none" | "up") {
-		return Post.vote(this.id, user, type);
+	async vote(user: number, type: "down" | "none" | "up", ipAddress: string | null = null) {
+		return Post.vote(this.id, user, type, ipAddress);
 	}
 
 	// flags
@@ -545,24 +564,32 @@ export default class Post implements PostData {
 	}
 
 	async getChildPosts() {
-		return (await Promise.all(this.childeren.map(async(c) => {
+		return (await Promise.all(this.children.map(async(c) => {
 			const post = await Post.get(c);
 			if (post === null) return this.fixChild(c);
 			return post;
 		}))).filter(Boolean) as Array<Post>;
 	}
 
-	// files
-	async getFiles() { return File.getFilesForPost(this.id); }
+	async setParent(parent: number, blame: number, ipAddress: string | null = null) { return Post.setParent(this.id, parent, blame, ipAddress); }
+	async addChild(child: number, blame: number, ipAddress: string | null = null) { return Post.addChild(this.id, child, blame, ipAddress); }
 
-	async addFile(data: Buffer, flags = 0) {
+	// files
+	async getFiles() { return File.getBulk(this.files); }
+
+	/** previous file deletion should be handled outside of this! */
+	async setFile(data: Buffer, flags = 0) {
 		const files = await Config.storageManager.store(data, this.id, flags);
+		const primary = files.find(f => f.is_primary === true);
+		assert(primary !== undefined, "failed to create primary file");
 		await this.edit({
-			files: [...this.files, ...files.map(f => f.id)]
+			files:    files.map(f => f.id),
+			type:     primary.type,
+			filesize: primary.size
 		});
 		return {
-			primary: files.find(f => f.is_primary === true),
-			all:     files
+			primary,
+			all: files
 		};
 	}
 
@@ -579,12 +606,18 @@ export default class Post implements PostData {
 		return this[type];
 	}
 
+	async setStat(type: keyof PostStats, value: number) {
+		this[type] = value;
+		await this.edit({ [type]: this[type] });
+		return this[type];
+	}
+
 	// misc
 	async getUploader() { return User.get(this.uploader_id); }
 	async getFavorites() { return Favorite.getForPost(this.id); }
 	async getPostVotes() { return PostVote.getForPost(this.id); }
 
-	async toJSON() {
+	async toJSON(getFiles = true) {
 		return {
 			id:            this.id,
 			uploader_id:   this.uploader_id,
@@ -598,7 +631,7 @@ export default class Post implements PostData {
 			score:         {
 				up:    this.score_up,
 				down:  this.score_down,
-				total: this.score_up - this.score_down
+				total: this.score
 			},
 			favorite_count: this.favorite_count,
 			// @TODO tag categories
@@ -610,12 +643,12 @@ export default class Post implements PostData {
 				rating_lock: this.rating_lock
 			},
 			rating:        this.rating,
-			files:         (await this.getFiles()).map(f => f.toJSON()),
+			files:         !getFiles ? this.files : (await this.getFiles()).map(f => f.toJSON()),
 			relationships: {
-				parent:    this.parent_id,
-				childeren: await this.getChildPosts(),
-				versions:  this.versions,
-				pools:     this.pools
+				parent:   this.parent_id,
+				children: await this.getChildPosts(),
+				versions: this.versions,
+				pools:    this.pools
 			},
 			description:   this.description,
 			title:         this.title,

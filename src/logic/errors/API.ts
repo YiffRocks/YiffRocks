@@ -67,7 +67,8 @@ export const PostErrors = {
 	UPLOAD_NO_FILE_OR_URL:        new APIError(1210, "You didn't upload a file or url..?"),
 	INVALID_SOURCE:               new APIError(1211, (source: string) => `The source "${source}" is invalid.`),
 	INVALID_VOTE_TYPE:            new APIError(1213, "You either provided no vote type, or it didn't match \"down\", \"none\" or \"up\"."),
-	GENERIC_TAG_VALIDATION_ERROR: new APIError(1214, (message: string) => message || "Unknown tag validation error.")
+	GENERIC_TAG_VALIDATION_ERROR: new APIError(1214, (message: string) => message || "Unknown tag validation error."),
+	NOT_FOUND_MD5:                new APIError(1215, "A post was not found with that md5.")
 };
 
 export const PostVersionErrors = {

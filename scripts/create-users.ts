@@ -15,13 +15,12 @@ for (const level of levels) {
 
 console.log("\n\n");
 
-for (let i = 0; i < 25; i++) {
-	const name = Math.random().toString(36).slice(2, (Math.random() * 6) + 7);
+for (let i = levels.length + 1; i <= (25 + levels.length); i++) {
 	const user = await User.create({
-		name,
+		name:  `user${i}`,
 		level: UserLevels.MEMBER
 	});
-	console.log(`Created random user #${i + 1}: ${name} (${user.id})`);
+	console.log(`Created random user #${(i - levels.length)}: ${user.name} (${user.id})`);
 }
 
 process.exit(0);

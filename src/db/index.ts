@@ -2,7 +2,10 @@ import Config from "../config";
 import type { QueryConfig, QueryResultRow } from "pg";
 import pg from "pg";
 import Redis from "ioredis";
+import debug from "debug";
 
+const dbLog = debug("yiff-rocks:db:postgres:query");
+const redisLog = debug("yiff-rocks:db:redis");
 export interface OkPacket<T extends bigint | number = bigint> {
 	affectedRows: number;
 	insertId: T;
@@ -29,7 +32,11 @@ export default class db {
 			ssl:              Config.dbSSL,
 			application_name: "Yiff Rocks"
 		});
+		debug("yiff-rocks:db:postgres:connect")("Connecting...");
+		const dbStart = process.hrtime.bigint();
 		await this.dbClient.connect();
+		const dbEnd = process.hrtime.bigint();
+		debug("yiff-rocks:db:postgres:connected")("Connected in %sms.", ((dbEnd - dbStart) / 100000n).toString());
 		this.redis = new Redis(Config.redisPort, Config.redisHost, {
 			username:         Config.redisUser,
 			password:         Config.redisPassword,
@@ -56,6 +63,7 @@ export default class db {
 
 	static async query<R extends QueryResultRow, I extends Array<unknown> = Array<unknown>>(queryTextOrConfig: string | QueryConfig<I>, values?: I | undefined) {
 		void this.initIfNotReady();
+		dbLog(queryTextOrConfig);
 		return this.dbClient.query<R, I>(queryTextOrConfig, values);
 	}
 }

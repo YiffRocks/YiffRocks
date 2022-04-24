@@ -7,7 +7,7 @@ import { assert } from "tsafe";
 export interface PostVoteData {
 	id: string;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	user_id: number;
 	post_id: number;
 	type: "down" | "none" | "up";
@@ -21,7 +21,7 @@ export default class PostVote implements PostVoteData {
 	static TABLE = "post_votes";
 	id: string;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	user_id: number;
 	post_id: number;
 	type: "down" | "none" | "up";
@@ -82,15 +82,26 @@ export default class PostVote implements PostVoteData {
 	async getUser() { return User.get(this.user_id); }
 	async getPost() { return Post.get(this.post_id); }
 
-	async toJSON(includeVoteInfo = true) {
-		const post = await this.getPost();
-		assert(post !== null, `null post for PostVote #${this.id} (user: ${this.user_id}, post: ${this.post_id})`);
-		return includeVoteInfo ? post.toJSON() : {
+	async toJSON(includePostInfo = true) {
+		let postLike: { score: { up: number; down: number; total: number; }; } | null;
+		if (includePostInfo) postLike = (await (await this.getPost())?.toJSON()) || null;
+		else {
+			const { rows: [{ score_up: up, score_down: down, score: total }] } = await db.query<{ score_up: number; score_down: number; score: number; }>("SELECT score_up, score_down, score FROM posts WHERE id = $1", [this.post_id]);
+			postLike = {
+				score: {
+					up,
+					down,
+					total
+				}
+			};
+		}
+		return {
 			created_at: this.created_at,
 			updated_at: this.updated_at,
 			user_id:    this.user_id,
 			post_id:    this.post_id,
-			post
+			type:       this.type,
+			post:       postLike
 		};
 	}
 }

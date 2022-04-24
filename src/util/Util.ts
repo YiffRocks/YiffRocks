@@ -62,14 +62,14 @@ export default class Util {
 	}
 
 	static removeUndefinedKV<T extends Record<string, unknown>>(data: T) {
-		return Object.entries(data).filter(([key, value]) => Boolean(key) && Boolean(value)).map(([key, value]) => ({ [key]: value })).reduce((a, b) => ({ ...a, ...b }), {});
+		return Object.entries(data).filter(([key, value]) => key !== undefined && key !== null && value !== undefined && value !== null).map(([key, value]) => ({ [key]: value })).reduce((a, b) => ({ ...a, ...b }), {});
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	static async genericEdit<T extends { get(id: number | string): Promise<any>; }, D extends Record<string, unknown>>(type: T, table: string, id: number | string, data: D): Promise<boolean> {
 		if (Object.hasOwn(data, "updated_at")) delete data.updated_at;
-		const keys = Object.keys(data);
-		const values = Object.values(data).filter(Boolean) ;
+		const keys = Object.keys(data).filter(val => val !== undefined && val !== null);
+		const values = Object.values(data).filter(val => val !== undefined && val !== null);
 		const res = await db.query<OkPacket>(`UPDATE ${table} SET ${keys.map((j, index) => `${j}=$${index + 2}`).join(", ")}, updated_at=CURRENT_TIMESTAMP(3) WHERE id = $1`, [id, ...values]);
 		return res.rowCount >= 1;
 	}
@@ -103,6 +103,7 @@ export default class Util {
 	static parseLimit(limit?: string | number, page: number | string = 1, user?: User): [limit: number, offset: number] {
 		if (typeof limit !== "number") limit = Number(limit);
 		if (isNaN(limit)) limit = user?.posts_per_page || Config.defaultPostLimit;
+		if (limit === 0) limit = user?.posts_per_page || Config.defaultPostLimit;
 		if (limit < Config.minPostLimit) limit = Config.minPostLimit;
 		if (limit > Config.maxPostLimit) limit = Config.maxPostLimit;
 
@@ -120,5 +121,10 @@ export default class Util {
 
 	static toPGArray(values: Array<unknown>) {
 		return `{${values.map(v => typeof v === "string" && (v.includes(",") || v.includes("}") ? `"${v}"` : v)).join(",")}}`;
+	}
+
+	static isValidNum(val: string) {
+		const n = Number(val);
+		return isNaN(n) ? false : n;
 	}
 }

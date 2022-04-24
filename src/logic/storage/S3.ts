@@ -99,7 +99,8 @@ export default class S3StorageManager extends BaseStorageManager {
 				mime:       fileType.mime,
 				post_id:    postID,
 				type:       this.getFileType(fileType.ext),
-				width
+				width,
+				size:       data.length
 			});
 			files.push(file);
 
@@ -124,7 +125,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("jpg"),
 					width:      info.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       jpeg.length
 				});
 				files.push(jpegFile);
 				await this.addToIQDB(postID, jpeg);
@@ -149,7 +151,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("png"),
 					width:      info.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       png.length
 				});
 				files.push(jpegFile);
 				await this.addToIQDB(postID, data); // yes, this is meant to use the provided jpeg
@@ -174,7 +177,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("jpg"),
 					width:      infoJpeg.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       jpeg.length
 				});
 				files.push(jpegFile);
 				await this.addToIQDB(postID, jpeg);
@@ -198,7 +202,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("png"),
 					width:      infoPng.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       png.length
 				});
 				files.push(pngFile);
 			} else if (fileType.mime === "image/gif") {
@@ -224,7 +229,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("jpg"),
 					width:      infoJpeg.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       fileJpeg.length
 				});
 				files.push(jpegFile);
 				// @TODO do we even want to bother uploading the previews of videos/gifs? it's possible for a lot
@@ -253,7 +259,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("png"),
 					width:      infoPng.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       filePng.length
 				});
 				files.push(pngFile);
 			} else if (fileType.mime === "video/webm") {
@@ -286,7 +293,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("jpg"),
 					width:      infoJpeg.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       fileJpeg.length
 				});
 				files.push(jpegFile);
 				// @TODO do we even want to bother uploading the previews of videos/gifs? it's possible for a lot
@@ -320,7 +328,8 @@ export default class S3StorageManager extends BaseStorageManager {
 					post_id:    postID,
 					type:       this.getFileType("png"),
 					width:      infoPng.bitmap.width,
-					parent_id:  file.id
+					parent_id:  file.id,
+					size:       filePng.length
 				});
 				files.push(pngFile);
 			} else throw new Error(`Unsupported File Type "${fileType.mime}"`);

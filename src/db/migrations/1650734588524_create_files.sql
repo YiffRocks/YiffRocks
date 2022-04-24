@@ -12,7 +12,8 @@ CREATE TABLE public.files (
 	width       SMALLINT      NOT NULL, 
 	height      SMALLINT      NOT NULL,
 	flags       BIGINT        NOT NULL DEFAULT 0,
-	parent_id   INT           NULL REFERENCES public.files (id)
+	parent_id   INT           NULL REFERENCES public.files (id),
+	size        INT           NOT NULL
 );
 
 CREATE INDEX ON public.files (post_id);
