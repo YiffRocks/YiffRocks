@@ -1,6 +1,8 @@
 import User from "./User";
 import Util from "../../util/Util";
 import db from "..";
+import type { PostVersionSearchOptions } from "../../logic/search/PostVersionSearch";
+import PostVersionSearch from "../../logic/search/PostVersionSearch";
 import { assert } from "tsafe";
 
 export interface PostVersionData {
@@ -14,9 +16,11 @@ export interface PostVersionData {
 	sources: Array<string>;
 	old_sources: Array<string>;
 	tags: Array<string>;
-	old_tags: Array<string>;
+	added_tags: Array<string>;
+	removed_tags: Array<string>;
 	locked_tags: Array<string>;
-	old_locked_tags: Array<string>;
+	added_locked_tags: Array<string>;
+	removed_locked_tags: Array<string>;
 	rating: "safe" | "questionable" | "explicit";
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
@@ -43,9 +47,11 @@ export default class PostVersion implements PostVersionData {
 	sources: Array<string>;
 	old_sources: Array<string>;
 	tags: Array<string>;
-	old_tags: Array<string>;
+	added_tags: Array<string>;
+	removed_tags: Array<string>;
 	locked_tags: Array<string>;
-	old_locked_tags: Array<string>;
+	added_locked_tags: Array<string>;
+	removed_locked_tags: Array<string>;
 	rating: "safe" | "questionable" | "explicit";
 	old_rating: "safe" | "questionable" | "explicit";
 	rating_lock: "minimum" | "exact" | "maximum" | null;
@@ -58,28 +64,30 @@ export default class PostVersion implements PostVersionData {
 	old_title: string;
 	constructor(data: PostVersionData) {
 		assert(data.post_id !== null, `received null post id in post version #${data.id}`);
-		this.id                 = data.id;
-		this.created_at         = data.created_at;
-		this.post_id            = data.post_id;
-		this.updater_id         = data.updater_id;
-		this.updater_ip_address = data.updater_ip_address;
-		this.revision           = data.revision;
-		this.sources            = data.sources;
-		this.old_sources        = data.old_sources;
-		this.tags               = data.tags;
-		this.old_tags           = data.old_tags;
-		this.locked_tags        = data.locked_tags;
-		this.old_locked_tags    = data.old_locked_tags;
-		this.rating             = data.rating;
-		this.old_rating         = data.old_rating;
-		this.rating_lock        = data.rating_lock;
-		this.old_rating_lock    = data.old_rating_lock;
-		this.parent_id             = data.parent_id;
-		this.old_parent_id         = data.old_parent_id;
-		this.description        = data.description.trim();
-		this.old_description    = data.old_description.trim();
-		this.title              = data.title.trim();
-		this.old_title          = data.old_title.trim();
+		this.id                  = data.id;
+		this.created_at          = data.created_at;
+		this.post_id             = data.post_id;
+		this.updater_id          = data.updater_id;
+		this.updater_ip_address  = data.updater_ip_address;
+		this.revision            = data.revision;
+		this.sources             = data.sources;
+		this.old_sources         = data.old_sources;
+		this.tags                = data.tags;
+		this.added_tags          = data.added_tags;
+		this.removed_tags        = data.removed_tags;
+		this.locked_tags         = data.locked_tags;
+		this.added_locked_tags   = data.added_locked_tags;
+		this.removed_locked_tags = data.removed_locked_tags;
+		this.rating              = data.rating;
+		this.old_rating          = data.old_rating;
+		this.rating_lock         = data.rating_lock;
+		this.old_rating_lock     = data.old_rating_lock;
+		this.parent_id           = data.parent_id;
+		this.old_parent_id       = data.old_parent_id;
+		this.description         = data.description.trim();
+		this.old_description     = data.old_description.trim();
+		this.title               = data.title.trim();
+		this.old_title           = data.old_title.trim();
 	}
 
 	static async get(id: number) {
@@ -102,6 +110,7 @@ export default class PostVersion implements PostVersionData {
 	static async create(data: PostVersionCreationData, defer: true): Promise<number>;
 	static async create(data: PostVersionCreationData, defer?: false): Promise<PostVersion>;
 	static async create(data: PostVersionCreationData, defer = false) {
+		// console.log("create called", data.post_id, new Error());
 		Util.removeUndefinedKeys(data);
 		const res = await db.insert<number>(this.TABLE, data);
 		if (defer) return res;
@@ -114,26 +123,23 @@ export default class PostVersion implements PostVersionData {
 		return db.delete(this.TABLE, id);
 	}
 
-
 	static async edit(id: number, data: Omit<Partial<PostVersionData>, "id">) {
 		return Util.genericEdit(PostVersion, this.TABLE, id, data);
 	}
 
-	get sourcesChanged() { return Boolean(this.old_sources && this.sources !== this.old_sources); }
+	get sourcesChanged() { return this.sources !== this.old_sources; }
 	get addedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).added : []; }
 	get removedSources() { return this.sourcesChanged ? Util.findDifferences(this.old_sources, this.sources).removed : []; }
-	get tagsChanged() { return Boolean(this.old_tags && this.tags !== this.old_tags); }
-	get addedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).added : []; }
-	get removedTags() { return this.tagsChanged ? Util.findDifferences(this.old_tags, this.tags).removed : []; }
+	get tagsChanged() { return JSON.stringify(this.oldTags) !== JSON.stringify(this.tags); }
+	get oldTags() { return [...this.tags.filter(t => !this.added_tags.includes(t)), ...this.removed_tags]; }
 
-	get lockedTagsChanged() { return Boolean(this.old_locked_tags && this.locked_tags !== this.old_locked_tags); }
-	get addedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).added : []; }
-	get removedLockedTags() { return this.lockedTagsChanged ? Util.findDifferences(this.old_locked_tags, this.locked_tags).removed : []; }
+	get lockedTagsChanged() { return JSON.stringify(this.oldLockedTags) !== JSON.stringify(this.locked_tags); }
+	get oldLockedTags() { return [...this.locked_tags.filter(t => !this.added_locked_tags.includes(t)), ...this.removed_locked_tags]; }
 	get ratingChanged() { return Boolean(this.old_rating && this.rating !== this.old_rating); }
-	get ratingLockChanged() { return Boolean(this.old_rating_lock && this.rating_lock !== this.old_rating_lock); }
-	get parentChanged() { return Boolean(this.old_parent_id && this.parent_id !== this.old_parent_id); }
-	get descriptionChanged() { return Boolean(this.old_description && this.description !== this.old_description); }
-	get titleChanged() { return Boolean(this.old_title && this.title !== this.old_title); }
+	get ratingLockChanged() { return this.old_rating_lock !== this.rating_lock; }
+	get parentChanged() { return this.old_parent_id !== this.parent_id; }
+	get descriptionChanged() { return this.old_description !== this.description; }
+	get titleChanged() { return this.old_title !== this.title; }
 
 	async delete() {
 		return PostVersion.delete(this.id);
@@ -144,6 +150,11 @@ export default class PostVersion implements PostVersionData {
 		return PostVersion.edit(this.id, data);
 	}
 
+	static async search(query: PostVersionSearchOptions, limit?: number, offset?: number) {
+		const [sql, values] = await PostVersionSearch.constructQuery(query, limit, offset);
+		const { rows: res } = await db.query<PostVersionData>(sql, values);
+		return res.map(r => new PostVersion(r));
+	}
 
 	async toJSON() {
 		return {
@@ -156,23 +167,24 @@ export default class PostVersion implements PostVersionData {
 			sources:         this.sources,
 			...(this.sourcesChanged ? {
 				old_sources:     this.old_sources,
-				sources_added:   this.addedSources,
-				sources_removed: this.removedSources
+				added_sources:   this.addedSources,
+				removed_sources: this.removedSources
 			} : {}),
 			tags_changed: this.tagsChanged,
 			tags:         this.tags,
 			...(this.tagsChanged ? {
-				old_tags:       this.old_tags,
-				tags_added:     this.addedTags,
-				tags_removed:   this.removedTags,
-				unchanged_tags: this.tags.filter(t => !this.addedTags.includes(t))
+				old_tags:       [...this.removed_tags, ...this.tags.filter(t => !this.added_tags.includes(t))],
+				added_tags:     this.added_tags,
+				removed_tags:   this.removed_tags,
+				unchanged_tags: this.tags.filter(t => !this.added_tags.includes(t))
 			} : {}),
 			locked_tags_changed: this.lockedTagsChanged,
 			locked_tags:         this.locked_tags,
 			...(this.lockedTagsChanged ? {
-				old_tags:            this.old_tags,
-				locked_tags_added:   this.addedLockedTags,
-				locked_tags_removed: this.removedLockedTags
+				old_tags:              [...this.removed_tags, ...this.tags.filter(t => !this.added_tags.includes(t))],
+				added_locked_tags:     this.added_locked_tags,
+				removed_locked_tags:   this.removed_locked_tags,
+				unchanged_locked_tags: this.locked_tags.filter(t => !this.added_locked_tags.includes(t))
 			} : {}),
 			rating_changed: this.ratingChanged,
 			rating:         this.rating,

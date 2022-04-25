@@ -1,113 +1,60 @@
+import GenericSearch from "./GenericSearch";
 import Config from "../../config";
-import File from "../../db/Models/File";
-import type { RatingLocks, Ratings } from "../../db/Models/Post";
-import { PostFlags, VALID_RATINGS, VALID_RATING_LOCKS } from "../../db/Models/Post";
-import Tag, { SearchMetaTags, OrderTypes } from "../../db/Models/Tag";
-import User from "../../db/Models/User";
+import type { AllRatings, RatingLocks, Ratings } from "../../db/Models/Post";
+import Post, { PostFlags, VALID_RATINGS, VALID_RATING_LOCKS } from "../../db/Models/Post";
 import Util from "../../util/Util";
+import Tag, { OrderTypes, SearchMetaTags } from "../../db/Models/Tag";
+import File from "../../db/Models/File";
 
-export default class PostSearch {
+export interface PostSearchOptions {
+	uploader_id?: number;
+	uploader_name?: string;
+	approver_id?: number;
+	approver_name?: string;
+	sources?: string;
+	tags?: string;
+	locked_tags?: string;
+	rating?: AllRatings;
+	rating_lock?: RatingLocks | "none";
+	parent_id?: number;
+	children?: string;
+	pools?: string;
+	description?: string;
+	title?: string;
+}
+export default class PostSearch extends GenericSearch {
+	protected static searchUploaderID(value: number) { return this.genericSearch("uploader_id", value); }
+	protected static searchUploaderName(value: string) { return this.searchUserName("uploader_id", value); }
+	protected static searchApproverID(value: number) { return this.genericSearch("approver_id", value); }
+	protected static searchApproverName(value: string) { return this.searchUserName("approver_id", value); }
 
-	private static searchUploaderID(value: number) { return this.searchUserID("uploader_id", value); }
-	private static searchUploaderName(value: string) { return this.searchUserName("uploader_id", value); }
-	private static searchApproverID(value: number) { return this.searchUserID("approver_id", value); }
-	private static searchApproverName(value: string) { return this.searchUserName("approver_id", value); }
-	private static searchUserID(name: string, value: number): [string, number] {
-		return [`${name} = ?`, Number(value)];
-	}
-
-	private static async searchUserName(name: string, value: string): Promise<[string, string] | null> {
-		const id = await User.nameToID(value);
-		if (id !== null) return [`${name} = ?`, value];
-		else return null;
-	}
-
-	private static searchSources(value: string, extraCB?: (val: string) => void) {
+	protected static searchSources(value: string, name = "sources") {
+		const n = name === "sources" ? "s" : `${name.slice(0, 1)}s`;
 		const res: Array<[string, string]> = [];
 		const all = value.split(" ");
 		let extra = false;
 		for (const source of all) {
 			extra = true;
-			res.push(["s LIKE ?", `%${Util.parseWildcards(source)}`]);
+			res.push([`${n} LIKE ?`, `%${Util.parseWildcards(source)}`]);
 		}
-		if (extra && extraCB) extraCB("unnest(locked_tags) l");
-		return res;
+		return {
+			results: res,
+			extra:   !extra ? [] : [`unnest(${name}) ${n}`]
+		};
 	}
 
-	private static formatOrder(type: string) {
-		switch (type) {
-			case "id": case "id_asc": return "ORDER BY id ASC";
-			case "id_desc": return "ORDER BY id DESC";
-
-			case "score": case "score_desc": return "ORDER BY score DESC";
-			case "score_asc": return "ORDER BY score ASC";
-
-			case "favcount": case "favcount_desc": return "ORDER BY favorite_count DESC";
-			case "favcount_asc": return "ORDER BY favorite_count ASC";
-
-			case "creation": case "creation_desc": return "ORDER BY created_at DESC";
-			case "creation_asc": return "ORDER BY created_at ASC";
-
-			case "update": case "update_desc": return "ORDER BY updated_at DESC";
-			case "update_asc": return "ORDER BY updated_at ASC";
-
-			case "comment_count": case "comment_count_desc": return "ORDER BY comment_count DESC";
-			case "comment_count_asc": return "ORDER BY comment_count ASC";
-
-			case "width": case "width_desc": return "ORDER BY width DESC";
-			case "width_asc": return "ORDER BY width ASC";
-
-			case "height": case "height_desc": return "ORDER BY height DESC";
-			case "height_asc": return "ORDER BY height ASC";
-
-			case "filesize": case "filesize_desc": return "ORDER BY filesize DESC";
-			case "filesize_asc": return "ORDER BY filesize ASC";
-
-			case "tagcount": case "tagcount_desc": return "ORDER BY tag_count DESC";
-			case "tagcount_asc": return "ORDER BY tag_count ASC";
-
-			case "tagcount_general": case "tagcount_general_desc": return "ORDER BY tag_count_general DESC";
-			case "tagcount_general_asc": return "ORER BY tag_count_general ASC";
-
-			case "tagcount_artist": case "tagcount_artist_desc": return "ORDER BY tag_count_artist DESC";
-			case "tagcount_artist_asc": return "ORER BY tag_count_artist ASC";
-
-			case "tagcount_copyright": case "tagcount_copyright_desc": return "ORDER BY tag_count_copyright DESC";
-			case "tagcount_copyright_asc": return "ORER BY tag_count_copyright ASC";
-
-			case "tagcount_character": case "tagcount_character_desc": return "ORDER BY tag_count_character DESC";
-			case "tagcount_character_asc": return "ORER BY tag_count_character ASC";
-
-			case "tagcount_species": case "tagcount_species_desc": return "ORDER BY tag_count_species DESC";
-			case "tagcount_species_asc": return "ORER BY tag_count_species ASC";
-
-			case "tagcount_invalid": case "tagcount_invalid_desc": return "ORDER BY tag_count_invalid DESC";
-			case "tagcount_invalid_asc": return "ORER BY tag_count_invalid ASC";
-
-			case "tagcount_lore": case "tagcount_lore_desc": return "ORDER BY tag_count_lore DESC";
-			case "tagcount_lore_asc": return "ORER BY tag_count_lore ASC";
-
-			case "tagcount_meta": case "tagcount_meta_desc": return "ORDER BY tag_count_meta DESC";
-			case "tagcount_meta_asc": return "ORER BY tag_count_meta ASC";
-
-			case "duration": case "duration_desc": return "ORDER BY duration DESC";
-			case "duration_asc": return "ORDER BY duration ASC";
-
-			case "popular": return "POPULAR";
-			case "random": return "ORDER BY RANDOM()";
-			default: return "INVALID;";
-		}
-	}
-
-	private static async searchTags(value: string, initialLimit: [limit: number, offset: number], extraCB?: (val: string) => void) {
+	protected static async searchTags(value: string, initialLimit: [limit: number, offset: number], enableMeta = true, dbName = "tags") {
+		const n = dbName === "tags" ? "t" : `${dbName.slice(0, 1)}t`;
 		const res: Array<[string, unknown?] | null> = [];
 		const all = value.split(" ");
 		let extra = false, limit: number | undefined, offset: number | undefined, order: ReturnType<typeof PostSearch["formatOrder"]> | undefined;
+		const usedExtra: Array<string> = [];
 		// @TODO revisit this as it might have some weird outcomes
+		// @TODO negations
 		for (const tag of all) {
 			const [meta, name] = Tag.parseMetaTag(tag, SearchMetaTags);
 			let num: number | false;
-			if (meta) {
+			if (meta && enableMeta) {
 				switch (meta) {
 					case "hassources": res.push([`array_dims(sources) IS ${name === "true" ? "NOT " : ""}NULL`]); break;
 					case "hasdescription": res.push([`description ${name === "true" ? "!" : ""}= ''`]); break;
@@ -125,8 +72,8 @@ export default class PostSearch {
 					case "approver": res.push(await this.searchApproverName(name)); break;
 					case "approver_id": if ((num = Util.isValidNum(name))) res.push(this.searchApproverID(num)); break;
 					case "id": if ((num = Util.isValidNum(name))) res.push(["id = ?", num]); break;
-					case "parent": if ((num = Util.isValidNum(name))) res.push(["parent_id = ?", num]); break;
-					case "child": if ((num = Util.isValidNum(name))) res.push(["children @> ARRAY[?]", num]); break;
+					case "parent":  if ((num = Util.isValidNum(name))) res.push(this.searchParentID(num)); break;
+					case "child": res.push(...this.searchChildren(name)); break;
 					case "rating": res.push(this.searchRatings(name as Ratings)); break;
 					case "lock": case "locked": res.push(this.searchRatingLocks(name as RatingLocks)); break;
 					case "score": if ((num = Util.isValidNum(name))) res.push(["score = ?", num]); break;
@@ -137,7 +84,14 @@ export default class PostSearch {
 					case "type": res.push(["type = ?", name]); break;
 					case "description": res.push(this.searchDescription(name)); break;
 					case "title": res.push(this.searchTitle(name)); break;
-					case "source": res.push(...this.searchSources(name)); break;
+					case "source": {
+						const s = this.searchSources(name);
+						if (s.results.length > 0) {
+							res.push(...s.results);
+							s.extra.forEach(e => !usedExtra.includes(e) ? usedExtra.push(e) : null);
+						}
+						break;
+					}
 					case "order": if (OrderTypes.includes(name)) order = this.formatOrder(name); break;
 					case "limit": if ((num = Util.isValidNum(name))) limit = Util.parseLimit(num)[0]; break;
 					case "page": offset = Util.parseLimit(limit || initialLimit[0], name)[0]; break;
@@ -150,51 +104,55 @@ export default class PostSearch {
 			} else {
 				if (tag.includes(Config.wildcardCharacter)) {
 					extra = true;
-					res.push(["t LIKE ?", Util.parseWildcards(tag)]);
-				} else res.push(["tags @> ARRAY[?]", tag]);
+					res.push([`${n} LIKE ?`, Util.parseWildcards(tag)]);
+				} else res.push([`${dbName} @> ARRAY[?]`, tag]);
 			}
 		}
-		if (extra && extraCB) extraCB("unnest(tags) t");
+		if (extra) usedExtra.push(`unnest(${dbName}) ${n}`);
 		return {
 			limit,
 			offset,
 			order,
-			results: res
+			results: res,
+			extra:   usedExtra
 		};
 	}
 
-	private static searchLockedTags(value: string, extraCB?: (val: string) => void) {
+	protected static searchLockedTags(value: string, name = "locked_tags") {
+		const n = name === "locked_tags" ? "l" : `${name.slice(0, 1)}l`;
 		const res: Array<[string, string]> = [];
 		const all = value.split(" ");
 		let extra = false;
 		for (const tag of all) {
 			if (tag.includes(Config.wildcardCharacter)) {
 				extra = true;
-				res.push(["l LIKE ?", `${Util.parseWildcards(tag)}`]);
-			} else res.push(["locked_tags @> ARRAY[?]", tag]);
+				res.push([`${n} LIKE ?`, `${Util.parseWildcards(tag)}`]);
+			} else res.push([`${name} @> ARRAY[?]`, tag]);
 		}
-		if (extra && extraCB) extraCB("unnest(locked_tags) l");
 
-		return res;
+		return {
+			results: res,
+			extra:   !extra ? [] : [`unnest(${name}) ${n}`]
+		};
 	}
 
-	private static searchRatings(value: Ratings | "e" | "q" | "s"): [string, string] | null {
+	protected static searchRatings(value: AllRatings, name = "rating") {
 		const r = value === "e" ? "explicit" : value === "q" ? "questionable" : value === "s" ? "safe" : value;
-		if (VALID_RATINGS.includes(r)) return ["rating = ?", r];
+		if (VALID_RATINGS.includes(r)) return this.genericSearch(name, r);
 		else return null;
 	}
 
-	private static searchRatingLocks(value: RatingLocks | "none"): [string, string | null] | null {
+	protected static searchRatingLocks(value: RatingLocks | "none", name = "rating_lock") {
 		const r = value === "none" ? null : value;
-		if (r === null || VALID_RATING_LOCKS.includes(r)) return ["rating_lock = ?", r];
+		if (r === null || VALID_RATING_LOCKS.includes(r)) return this.genericSearch(name, r);
 		else return null;
 	}
 
-	private static searchParentID(value: number): [string, number] {
-		return ["parent_id = ?", value];
+	protected static searchParentID(value: number, name = "parent_id") {
+		return this.genericSearch(name, value);
 	}
 
-	private static searchchildren(value: string) {
+	protected static searchChildren(value: string) {
 		const res: Array<[string, number]> = [];
 		const all = value.split(" ");
 		for (const child of all) {
@@ -203,8 +161,7 @@ export default class PostSearch {
 		}
 		return res;
 	}
-
-	private static searchPools(value: string) {
+	protected static searchPools(value: string) {
 		const res: Array<[string, number]> = [];
 		const all = value.split(" ");
 		for (const pool of all) {
@@ -214,38 +171,25 @@ export default class PostSearch {
 		return res;
 	}
 
-	private static searchLike(name: string, value: string): [string, string] { return [`${name} LIKE ?`, `%${Util.parseWildcards(value)}%`]; }
-	private static searchDescription(value: string) { return this.searchLike("description", value); }
-	private static searchTitle(value: string) { return this.searchLike("title", value); }
+	protected static searchDescription(value: string, name = "description") { return this.searchLike(name, value); }
+	protected static searchTitle(value: string, name = "title") { return this.searchLike(name, value); }
 
-	static async constructQuery(query: {
-		uploader_id?: number;
-		uploader_name?: string;
-		approver_id?: number;
-		approver_name?: string;
-		sources?: string;
-		tags?: string;
-		locked_tags?: string;
-		rating?: Ratings | "e" | "q" | "s";
-		rating_lock?: RatingLocks | "none";
-		parent_id?: number;
-		children?: string;
-		pools?: string;
-		description?: string;
-		title?: string;
-	}, limit?: number, offset?: number): Promise<[query: string, values: Array<unknown>, order?: string]> {
+	static override async constructQuery(query: PostSearchOptions, limit?: number, offset?: number): Promise<[query: string, values: Array<unknown>]> {
 		const filters: Array<[string, unknown?] | null> = [];
 		const selectExtra: Array<string> = [];
-		const addExtra = (val: string) => selectExtra.includes(val) ? null : selectExtra.push(val);
 		let order: string | undefined;
 		if (query.uploader_id && !isNaN(query.uploader_id)) filters.push(this.searchUploaderID(query.uploader_id));
 		if (query.approver_id && !isNaN(query.approver_id)) filters.push(this.searchApproverID(query.approver_id));
 		if (query.parent_id && !isNaN(query.parent_id))     filters.push(this.searchParentID(query.parent_id));
 		if (query.uploader_name) filters.push(await this.searchUploaderName(query.uploader_name));
 		if (query.approver_name) filters.push(await this.searchApproverName(query.approver_name));
-		if (query.sources)       filters.push(...this.searchSources(query.sources, addExtra));
+		if (query.sources) {
+			const s = this.searchSources(query.sources);
+			if (s.extra) s.extra.forEach(e => !selectExtra.includes(e) ? selectExtra.push(e) : null);
+			filters.push(...s.results);
+		}
 		if (query.tags) {
-			const t = await this.searchTags(query.tags, [limit || Config.defaultPostLimit, offset || 0], addExtra);
+			const t = await this.searchTags(query.tags, [limit || Config.defaultPostLimit, offset || 0]);
 			if (t.limit) limit = t.limit;
 			if (t.offset) offset = t.offset;
 			if (t.order) {
@@ -255,12 +199,17 @@ export default class PostSearch {
 					// ignore
 				} else order = t.order;
 			}
+			if (t.extra) t.extra.forEach(e => !selectExtra.includes(e) ? selectExtra.push(e) : null);
 			filters.push(...t.results);
 		}
-		if (query.locked_tags)   filters.push(...this.searchLockedTags(query.locked_tags, addExtra));
+		if (query.locked_tags) {
+			const lt = this.searchLockedTags(query.locked_tags);
+			if (lt.extra) lt.extra.forEach(e => !selectExtra.includes(e) ? selectExtra.push(e) : null);
+			filters.push(...lt.results);
+		}
 		if (query.rating)        filters.push(this.searchRatings(query.rating));
 		if (query.rating_lock)   filters.push(this.searchRatingLocks(query.rating_lock));
-		if (query.children)     filters.push(...this.searchchildren(query.children));
+		if (query.children)     filters.push(...this.searchChildren(query.children));
 		if (query.pools)         filters.push(...this.searchPools(query.pools));
 		if (query.description)   filters.push(this.searchDescription(query.description));
 		if (query.title)         filters.push(this.searchTitle(query.title));
@@ -269,6 +218,6 @@ export default class PostSearch {
 		const values = filters.filter((v) => Boolean(v && v[1])).map(f => f![1]);
 
 		if (!order) order = "ORDER BY id DESC";
-		return [`SELECT p.* FROM posts p${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`}${!order ? "" : ` ${order}`} LIMIT ${limit || Config.defaultPostLimit} OFFSET ${offset || 0}`, values];
+		return [`SELECT p.* FROM ${Post.TABLE} p${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`}${!order ? "" : ` ${order}`} LIMIT ${limit || Config.defaultPostLimit} OFFSET ${offset || 0}`, values];
 	}
 }
