@@ -5,7 +5,7 @@ services:
     command: ["http", "0.0.0.0", "5588", "/data/iqdb.db"]
     volumes:
       - iqdb_data:/data
-    restart: always
+    restart: unless-stopped
     healthcheck:
       interval: 10s
       timeout: 2s
@@ -20,7 +20,7 @@ services:
     command: redis-server --save 10 1 --loglevel warning
     volumes:
       - redis_data:/data
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test: redis-cli ping
       interval: 10s
@@ -34,7 +34,7 @@ services:
     container_name: postgres.yiff-rocks
     volumes:
       - db_data:/var/lib/postgresql/data
-    restart: always
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=yiff-rocks
       - POSTGRES_DB=yiff-rocks
@@ -61,3 +61,5 @@ volumes:
   iqdb_data:
   redis_data:
   db_data:
+
+# TODO: replace unless-stopped with always when in prod
