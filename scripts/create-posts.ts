@@ -36,39 +36,47 @@ const e6 = new E621({
 
 const saveResults = true;
 if (saveResults) if (!await access(`${__dirname}/../test/post_files`).then(() => true, () => false)) await mkdir(`${__dirname}/../test/post_files`);
-const rawPosts: Array<PostProperties> = [];
+const rawPosts = {
+	posts:  [] as Array<PostProperties>,
+	child:  {} as Record<number, PostProperties>,
+	parent: {} as Record<number, PostProperties>
+};
 // this will download and add all parent & child posts, even nested ones, so post numbers can easily multiply from 2 or 3x
 const downloadedPosts: Array<number> = [];
-async function addPost(type: string, post: E621Post) {
+async function addPost(type: string, post: E621Post, noSave = false) {
 	if (!downloadedPosts.includes(post.id)) {
 		console.log("Pulling down post #%d for %s (%s)", post.id, type, post.file.url);
 		const p = await Post.create({
 			uploader_id: adminUser!.id,
 			rating:      convertRating(post.rating),
 			sources:     [...post.sources, `https://e621.net/posts/${post.id}`, post.file.url],
-			description: post.description
+			description: post.description,
+			title:       `Post #${post.id} - Imported From E621`
 		});
 		await p.approve(adminUser!.id);
-		await p.setTags(adminUser!, null, Object.entries(post.tags).map(([category, tags]) => tags.map(t => `${category}:${t}`)).reduce((a, b) => a.concat(b), []).join(" "));
+		await p.setTags(adminUser!, null, Object.entries(post.tags).map(([category, tags]) => tags.map(t => `${category}:${t}`)).reduce((a, b) => a.concat(b), []).join(" "), true);
+		if (post.locked_tags.length > 0) await p.setLockedTags(adminUser!, null, post.locked_tags.join(" "), true);
 		const file = await downloadFile(post.file.url);
 		await p.setFile(file);
-		if (saveResults) rawPosts.push(post);
+		if (saveResults && !noSave) rawPosts.posts.push(post);
 		downloadedPosts.push(post.id);
 		console.log("Created post #%d", p.id);
 		if (post.relationships.children.length > 0) {
-			for (const child of post.relationships.children) {
-				const childPost = await e6.posts.get(child);
-				if (childPost && childPost.file.ext !== "swf" && !downloadedPosts.includes(childPost.id) && !childPost.flags.deleted) {
-					const { id } = await addPost(`${type} (child of #${p.id})`, childPost);
-					await p.addChild(id, adminUser!.id);
+			const childPosts = await e6.posts.search({ tags: `parent:${post.id}` });
+			for (const child of childPosts) {
+				if (child.file.ext !== "swf" && !downloadedPosts.includes(child.id) && !child.flags.deleted) {
+					if (saveResults) rawPosts.child[child.id] = child;
+					const { id } = await addPost(`${type} (child of #${p.id})`, child, true);
+					await p.addChild(id);
 				}
 			}
 		}
 		if (post.relationships.parent_id) {
 			const parent = await e6.posts.get(post.relationships.parent_id);
 			if (parent && parent.file.ext !== "swf" && !downloadedPosts.includes(parent.id) && !parent.flags.deleted) {
-				const { id } = await addPost(`${type} (parent of #${p.id})`, parent);
-				await p.setParent(id, adminUser!.id);
+				rawPosts.parent[post.id] = parent;
+				const { id } = await addPost(`${type} (parent of #${p.id})`, parent, true);
+				await p.setParent(id, adminUser!.id, null, true);
 			}
 		}
 		return p;

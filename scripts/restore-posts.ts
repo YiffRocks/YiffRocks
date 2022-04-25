@@ -1,22 +1,20 @@
-import Config from "../src/config";
 import Post from "../src/db/Models/Post";
 import User from "../src/db/Models/User";
 import type { Ratings , PostProperties } from "e621";
-import E621 from "e621";
 import { assert } from "tsafe";
 import { access, mkdir, readFile } from "fs/promises";
 
 const __dirname = new URL(".", import.meta.url).pathname;
-const posts = JSON.parse((await readFile(`${__dirname}/../test/posts.json`)).toString()) as Array<PostProperties>;
+const { posts, child: childPosts, parent: parentPosts } = JSON.parse((await readFile(`${__dirname}/../test/posts.json`)).toString()) as {
+	posts: Array<PostProperties>;
+	child: Record<number, PostProperties>;
+	parent: Record<number, PostProperties>;
+}
+;
 const convertRating = (r: Ratings) => r === "s" ? "safe" : r === "q" ? "questionable" : r === "e" ? "explicit" : "unknown" as never;
 
 const adminUser = await User.get(1);
 assert(adminUser !== null, "null admin user");
-
-const e6 = new E621({
-	userAgent:      Config.userAgent,
-	requestTimeout: 300
-});
 
 const saveResults = true;
 if (saveResults) if (!await access(`${__dirname}/../test/post_files`).then(() => true, () => false)) await mkdir(`${__dirname}/../test/post_files`);
@@ -28,28 +26,30 @@ async function addPost(type: string, post: PostProperties) {
 			uploader_id: adminUser!.id,
 			rating:      convertRating(post.rating),
 			sources:     [...post.sources, `https://e621.net/posts/${post.id}`, post.file.url],
-			description: post.description
+			description: post.description,
+			title:       `Post #${post.id} - Imported From E621`
 		});
 		await p.approve(adminUser!.id);
-		await p.setTags(adminUser!, null, Object.entries(post.tags).map(([category, tags]) => tags.map(t => `${category}:${t}`)).reduce((a, b) => a.concat(b), []).join(" "));
+		await p.setTags(adminUser!, null, Object.entries(post.tags).map(([category, tags]) => tags.map(t => `${category}:${t}`)).reduce((a, b) => a.concat(b), []).join(" "), true);
+		if (post.locked_tags.length > 0) await p.setLockedTags(adminUser!, null, post.locked_tags.join(" "), true);
 		const file = await readFile(`${__dirname}/../test/post_files/${Buffer.from(post.file.url).toString("base64")}`);
 		await p.setFile(file);
 		downloadedPosts.push(post.id);
 		console.log("Restored post #%d", p.id);
 		if (post.relationships.children.length > 0) {
 			for (const child of post.relationships.children) {
-				const childPost = await e6.posts.get(child);
+				const childPost = childPosts[child];
 				if (childPost && childPost.file.ext !== "swf" && !downloadedPosts.includes(childPost.id) && !childPost.flags.deleted) {
 					const { id } = await addPost(`${type} (child of #${p.id})`, childPost);
-					await p.addChild(id, adminUser!.id);
+					await p.addChild(id);
 				}
 			}
 		}
 		if (post.relationships.parent_id) {
-			const parent = await e6.posts.get(post.relationships.parent_id);
+			const parent = parentPosts[post.relationships.parent_id];
 			if (parent && parent.file.ext !== "swf" && !downloadedPosts.includes(parent.id) && !parent.flags.deleted) {
 				const { id } = await addPost(`${type} (parent of #${p.id})`, parent);
-				await p.setParent(id, adminUser!.id);
+				await p.setParent(id, adminUser!.id, null, true);
 			}
 		}
 		return p;

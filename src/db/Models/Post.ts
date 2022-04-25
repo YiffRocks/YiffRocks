@@ -8,6 +8,7 @@ import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
 import TagNameValidator from "../../logic/TagNameValidator";
+import type { PostSearchOptions } from "../../logic/search/PostSearch";
 import PostSearch from "../../logic/search/PostSearch";
 import { assert } from "tsafe";
 
@@ -65,6 +66,8 @@ export type PostCreationIgnored = "id" | "created_at" | "updated_at" | "version"
 export type PostCreationData = PostCreationRequired & Partial<Omit<PostData, keyof PostCreationRequired | PostCreationIgnored>>;
 
 export type Ratings =  typeof VALID_RATINGS[number];
+export type ShortRatings =  typeof VALID_SHORT_RATINGS[number];
+export type AllRatings =  typeof ALL_RATINGS[number];
 export type RatingLocks = typeof VALID_RATING_LOCKS[number];
 
 export const PostFlags = {
@@ -75,6 +78,8 @@ export const PostFlags = {
 };
 
 export const VALID_RATINGS = ["safe", "questionable", "explicit"] as const;
+export const VALID_SHORT_RATINGS = ["s", "q", "e"] as const;
+export const ALL_RATINGS = [...VALID_RATINGS, ...VALID_SHORT_RATINGS];
 export const VALID_RATING_LOCKS = ["minimum", "exact", "maximum"] as const;
 
 export default class Post implements PostData {
@@ -177,7 +182,9 @@ export default class Post implements PostData {
 			revision:           1,
 			sources:            data.sources,
 			tags:               data.tags,
+			added_tags:         data.tags,
 			locked_tags:        data.locked_tags,
+			added_locked_tags:  data.locked_tags,
 			rating:             data.rating,
 			rating_lock:        data.rating_lock,
 			parent_id:          data.parent_id,
@@ -208,26 +215,28 @@ export default class Post implements PostData {
 		const post = await Post.get(id);
 		assert(post !== null, "[Post#editAsUser]: failed to get post");
 		const v = await PostVersion.create({
-			post_id:         id,
+			post_id:             id,
 			updater_id,
 			updater_ip_address,
-			revision:        (await Post.getRevisionNumber(id)) + 1,
-			sources:         data.sources || post.sources,
-			old_sources:     data.sources === undefined ? undefined : post.sources,
-			tags:            data.tags || post.tags,
-			old_tags:        data.tags === undefined ? undefined : post.tags,
-			locked_tags:     data.locked_tags || post.locked_tags,
-			old_locked_tags: data.locked_tags === undefined ? undefined : post.locked_tags,
-			rating:          data.rating || post.rating,
-			old_rating:      data.rating === undefined ? undefined : post.rating,
-			rating_lock:     data.rating_lock || post.rating_lock,
-			old_rating_lock: data.rating_lock === undefined ? undefined : post.rating_lock,
-			parent_id:       data.parent_id || post.parent_id,
-			old_parent_id:   data.parent_id === undefined ? undefined : post.parent_id,
-			description:     data.description || post.description,
-			old_description: data.description === undefined ? undefined : post.description,
-			title:           data.title || post.title,
-			old_title:       data.title === undefined ? undefined : post.title
+			revision:            (await Post.getRevisionNumber(id)) + 1,
+			sources:             data.sources || post.sources,
+			old_sources:         data.sources === undefined ? undefined : post.sources,
+			tags:                data.tags || post.tags,
+			added_tags:          data.tags === undefined ? undefined : data.tags.filter(t => !post.tags.includes(t)),
+			removed_tags:        data.tags === undefined ? undefined :  post.tags.filter(t => !data.tags!.includes(t)),
+			locked_tags:         data.locked_tags || post.locked_tags,
+			added_locked_tags:   data.locked_tags === undefined ? undefined : data.locked_tags.filter(t => !post.locked_tags.includes(t)),
+			removed_locked_tags: data.locked_tags === undefined ? undefined :  post.locked_tags.filter(t => !data.locked_tags!.includes(t)),
+			rating:              data.rating || post.rating,
+			old_rating:          data.rating === undefined ? undefined : post.rating,
+			rating_lock:         data.rating_lock || post.rating_lock,
+			old_rating_lock:     data.rating_lock === undefined ? undefined : post.rating_lock,
+			parent_id:           data.parent_id || post.parent_id,
+			old_parent_id:       data.parent_id === undefined ? undefined : post.parent_id,
+			description:         data.description || post.description,
+			old_description:     data.description === undefined ? undefined : post.description,
+			title:               data.title || post.title,
+			old_title:           data.title === undefined ? undefined : post.title
 		}, false);
 
 		await post.edit({
@@ -318,47 +327,37 @@ export default class Post implements PostData {
 		}
 	}
 
-	static async setParent(post: number, parent: number, blame: number, ipAddress: string | null = null) {
-		await Post.editAsUser(post, blame, ipAddress, { parent_id: parent });
-		await Post.addChild(parent, post, blame);
+	static async setParent(post: number, parent: number, blame: number, ipAddress: string | null = null, initial = false) {
+		// if this is on initial upload, we don't want to make multiple post version entries
+		if (initial) await Post.edit(post, { parent_id: parent });
+		else await Post.editAsUser(post, blame, ipAddress, { parent_id: parent });
+		await Post.addChild(parent, post);
 	}
 
-	static async addChild(post: number, child: number, blame: number, ipAddress: string | null = null) {
+	static async addChild(post: number, child: number) {
 		const { rows: [{ children }] } = await db.query<{ children: Array<number>; }>(`SELECT children FROM ${this.TABLE} WHERE id = $1`, [post]);
-		await Post.editAsUser(post, blame, ipAddress, {
+		await Post.edit(post, {
 			children: [...children, child]
 		});
 	}
 
-	static async search(query: {
-		uploader_id?: number;
-		uploader_name?: string;
-		approver_id?: number;
-		approver_name?: string;
-		sources?: string;
-		tags?: string;
-		locked_tags?: string;
-		rating?: Ratings | "e" | "q" | "s";
-		rating_lock?: RatingLocks | "none";
-		parent_id?: number;
-		children?: string;
-		pools?: string;
-		description?: string;
-		title?: string;
-	}, limit?: number, offset?: number) {
+	static async search(query: PostSearchOptions, limit?: number, offset?: number) {
 		const [sql, values] = await PostSearch.constructQuery(query, limit, offset);
 		const { rows: res } = await db.query<PostData>(sql, values);
 		return res.map(r => new Post(r));
 	}
 
-
-	async setTags(user: User, ipAddress: string | null, data: string) {
+	async setTags(user: User, ipAddress: string | null, data: string, initial = false) {
 		const tags = data.split(" ");
-		const finalTags: Array<string> = [];
+		const finalTags: Array<string> = [], negatedTags: Array<string> = [];
 		const errors: Array<string> = [];
-		let newRating: Post["rating"] | undefined;
-		let newRatingLock: Post["rating_lock"] | undefined;
-		for (const tag of tags) {
+		let newRating: Post["rating"] | undefined, newRatingLock: Post["rating_lock"] | undefined;
+		for (let tag of tags) {
+			let negated = false;
+			if (tag.startsWith("-")) {
+				negated = true;
+				tag = tag.slice(1);
+			}
 			const [meta, name] = Tag.parseMetaTag(tag, [...FunctionalMetaTags, ...TagCategoryNames]);
 			const exists = await Tag.doesExist(name);
 			const validationCheck = TagNameValidator.validate(name);
@@ -383,6 +382,8 @@ export default class Post implements PostData {
 					}
 				} else {
 					if (FunctionalMetaTags.includes(meta)) {
+						// @TODO functional meta tags
+						// @TODO negated meta tags
 						switch (meta) {
 							// @TODO pools
 							case "pool": {
@@ -458,6 +459,11 @@ export default class Post implements PostData {
 					}
 				}
 			} else {
+				if (negatedTags.includes(name)) continue;
+				if (negated) {
+					negatedTags.push(tag);
+					continue;
+				}
 				if (!exists) await Tag.create({
 					name,
 					creator_id: user.id
@@ -468,20 +474,119 @@ export default class Post implements PostData {
 		}
 
 		const categorized = await Tag.parseTagTypes(finalTags);
-		await this.editAsUser(user.id, ipAddress, {
-			tags:                finalTags,
-			rating:              newRating,
-			rating_lock:         newRatingLock,
-			tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
-			tag_count_general:   categorized.general.length,
-			tag_count_artist:    categorized.artist.length,
-			tag_count_copyright: categorized.copyright.length,
-			tag_count_character: categorized.character.length,
-			tag_count_species:   categorized.species.length,
-			tag_count_invalid:   categorized.invalid.length,
-			tag_count_lore:      categorized.lore.length,
-			tag_count_meta:      categorized.meta.length
-		});
+		if (initial) {
+			// initially setting the tags shouldn't create an entirely new post version
+			await this.edit({
+				tags:                finalTags,
+				tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
+				tag_count_general:   categorized.general.length,
+				tag_count_artist:    categorized.artist.length,
+				tag_count_copyright: categorized.copyright.length,
+				tag_count_character: categorized.character.length,
+				tag_count_species:   categorized.species.length,
+				tag_count_invalid:   categorized.invalid.length,
+				tag_count_lore:      categorized.lore.length,
+				tag_count_meta:      categorized.meta.length
+			});
+			const v = await PostVersion.get(this.version);
+			assert(v !== null, `failed to find post version for post # ${this.id}`);
+			await v.edit({
+				tags:       finalTags,
+				added_tags: finalTags
+			});
+			if (newRating || newRatingLock) await this.editAsUser(user.id, ipAddress, {
+				rating:      newRating,
+				rating_lock: newRatingLock
+			});
+		} else {
+			await this.editAsUser(user.id, ipAddress, {
+				rating:              newRating,
+				rating_lock:         newRatingLock,
+				tags:                finalTags,
+				tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
+				tag_count_general:   categorized.general.length,
+				tag_count_artist:    categorized.artist.length,
+				tag_count_copyright: categorized.copyright.length,
+				tag_count_character: categorized.character.length,
+				tag_count_species:   categorized.species.length,
+				tag_count_invalid:   categorized.invalid.length,
+				tag_count_lore:      categorized.lore.length,
+				tag_count_meta:      categorized.meta.length
+			});
+		}
+
+		return errors;
+	}
+
+	async setLockedTags(user: User, ipAddress: string | null, data: string, initial = false) {
+		const tags = data.split(" ");
+		const finalTags: Array<string> = [];
+		const errors: Array<string> = [];
+		let newRating: Post["rating"] | undefined, newRatingLock: Post["rating_lock"] | undefined;
+		for (const tag of tags) {
+			const [meta, name] = Tag.parseMetaTag(tag, [...FunctionalMetaTags, ...TagCategoryNames]);
+			const exists = await Tag.doesExist(name);
+			const validationCheck = TagNameValidator.validate(name);
+			if (validationCheck !== true) {
+				errors.push(...validationCheck.map(e => `${e} (${name})`));
+				continue;
+			}
+			if (meta) errors.push(`meta cannot be used within locked tags (${tag})`);
+			else {
+				if (!exists) await Tag.create({
+					name,
+					creator_id: user.id
+				}, ipAddress);
+				finalTags.push(name);
+				continue;
+			}
+		}
+
+		const final = [...this.tags, ...finalTags];
+		const categorized = await Tag.parseTagTypes(final);
+		if (initial) {
+			// initially setting the tags shouldn't create an entirely new post version
+			await this.edit({
+				tags:                final,
+				tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
+				tag_count_general:   categorized.general.length,
+				tag_count_artist:    categorized.artist.length,
+				tag_count_copyright: categorized.copyright.length,
+				tag_count_character: categorized.character.length,
+				tag_count_species:   categorized.species.length,
+				tag_count_invalid:   categorized.invalid.length,
+				tag_count_lore:      categorized.lore.length,
+				tag_count_meta:      categorized.meta.length,
+				locked_tags:         finalTags
+			});
+			const v = await PostVersion.get(this.version);
+			assert(v !== null, `failed to find post version for post # ${this.id}`);
+			await v.edit({
+				tags:              final,
+				added_tags:        final,
+				locked_tags:       finalTags,
+				added_locked_tags: finalTags
+			});
+			if (newRating || newRatingLock) await this.editAsUser(user.id, ipAddress, {
+				rating:      newRating,
+				rating_lock: newRatingLock
+			});
+		} else {
+			await this.editAsUser(user.id, ipAddress, {
+				rating:              newRating,
+				rating_lock:         newRatingLock,
+				tags:                finalTags,
+				tag_count:           Object.values(categorized).reduce((a, b) => a + b.length, 0),
+				tag_count_general:   categorized.general.length,
+				tag_count_artist:    categorized.artist.length,
+				tag_count_copyright: categorized.copyright.length,
+				tag_count_character: categorized.character.length,
+				tag_count_species:   categorized.species.length,
+				tag_count_invalid:   categorized.invalid.length,
+				tag_count_lore:      categorized.lore.length,
+				tag_count_meta:      categorized.meta.length
+			});
+		}
 
 		return errors;
 	}
@@ -571,8 +676,8 @@ export default class Post implements PostData {
 		}))).filter(Boolean) as Array<Post>;
 	}
 
-	async setParent(parent: number, blame: number, ipAddress: string | null = null) { return Post.setParent(this.id, parent, blame, ipAddress); }
-	async addChild(child: number, blame: number, ipAddress: string | null = null) { return Post.addChild(this.id, child, blame, ipAddress); }
+	async setParent(parent: number, blame: number, ipAddress: string | null = null, initial = false) { return Post.setParent(this.id, parent, blame, ipAddress, initial); }
+	async addChild(child: number) { return Post.addChild(this.id, child); }
 
 	// files
 	async getFiles() { return File.getBulk(this.files); }

@@ -17,14 +17,14 @@ for (const user of users) {
 		const posts = (await db.query<PostData>("SELECT * FROM posts ORDER BY RANDOM() LIMIT 100")).rows.map(r => new Post(r));
 		for (const post of posts) {
 			const val = Math.random();
-			if (val <= 0.50) {
-				totalUp++;
-				console.log("Adding Upvote As @%s (%d) on post #%d", user.name, user.id, post.id);
-				await post.vote(user.id, "up");
-			} else if (val <= 0.80) {
+			if (val <= 0.45) {
 				totalDown++;
 				console.log("Adding Downvote As @%s (%d) on post #%d", user.name, user.id, post.id);
 				await post.vote(user.id, "down");
+			} else if (val <= 0.90) {
+				totalUp++;
+				console.log("Adding Upvote As @%s (%d) on post #%d", user.name, user.id, post.id);
+				await post.vote(user.id, "up");
 			} else continue;
 		}
 	}

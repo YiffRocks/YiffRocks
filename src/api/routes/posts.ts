@@ -28,7 +28,7 @@ if (!existsSync(Config.uploadDir)) execSync(`mkdir -p ${Config.uploadDir}`);
 const uploader = multer({ dest: Config.uploadDir });
 
 app.route("/")
-	.all(apiHeaders(["OPTIONS", "GET"]), authCheck("json"))
+	.all(apiHeaders(["OPTIONS", "GET"]))
 	.get(async(req: Request<never, unknown, never, {
 		uploader_id?: string;
 		uploader_name?: string;
