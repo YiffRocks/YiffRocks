@@ -80,7 +80,7 @@ export default class File implements FileData {
 	}
 
 	static async getBulk(files: Array<number>) {
-		const { rows: res } = await db.query<FileData>(`SELECT * FROM files WHERE id = ANY(ARRAY[${files.join(",")}])`);
+		const { rows: res } = await db.query<FileData>(`SELECT * FROM ${this.TABLE} WHERE id = ANY(ARRAY[${files.join(",")}])`);
 		return res.map(f => new File(f));
 	}
 

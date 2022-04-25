@@ -174,6 +174,11 @@ export default class Post implements PostData {
 		return res.map(r => r.revision).sort((a, b) => a - b)[res.length - 1];
 	}
 
+	static async getBulk(posts: Array<number>) {
+		const { rows: res } = await db.query<PostData>(`SELECT * FROM ${this.TABLE} WHERE id = ANY(ARRAY[${posts.join(",")}])`);
+		return res.map(p => new Post(p));
+	}
+
 	static async create(data: PostCreationData, ip_address = null) {
 		Util.removeUndefinedKeys(data);
 		const ver = await PostVersion.create({

@@ -13,6 +13,7 @@ import authCheck from "../../util/authCheck";
 import type PostVote from "../../db/Models/PostVote";
 import { UserLevels } from "../../db/Models/User";
 import db from "../../db";
+import IQDB from "../../logic/IQDB";
 import type { Request } from "express";
 import { Router } from "express";
 import multer from "multer";
@@ -79,6 +80,42 @@ app.route("/")
 		// should work just fine for the time being
 		for (const file of files) (posts[indexes[file.post_id]].files as Array<unknown>).push(new File(file).toJSON());
 		return res.status(200).json(posts);
+	});
+
+app.route("/find_similar")
+	.all(apiHeaders(["OPTIONS", "POST"]))
+	.post(uploader.single("file"), async(req: Request<never, unknown, {
+		url?: string;
+		min_simularity?: number | "exact" | "strong" | "weak" | "any" | "none";
+		max_results?: number;
+	}>, res) => {
+		let file: Buffer;
+		if (req.file) file = await readFile(req.file.path);
+		else if (req.body.url) {
+			if (!Config.urlRegex.test(req.body.url)) return res.status(400).json(GeneralErrors.INVALID_URL);
+			const img = await ProxyRequest.get(req.body.url);
+			file = Buffer.from(await img.body.arrayBuffer());
+		} else return res.status(400).json(PostErrors.IQDB_NO_FILE_OR_URL);
+		const type = await fileTypeFromBuffer(file);
+		if (!type) return res.status(400).json(GeneralErrors.CORRUPT_FILE);
+		const sim = req.body.min_simularity === undefined || req.body.min_simularity === null ? 85 :
+			typeof req.body.min_simularity === "string" ?
+				req.body.min_simularity === "exact" ? 99 :
+					req.body.min_simularity === "strong" ? 90 :
+						req.body.min_simularity === "weak" ? 70 :
+							req.body.min_simularity === "any" ? 50 : 0 :
+				req.body.min_simularity < 0 ? 0 :
+					req.body.min_simularity > 100 ? 100 :
+						req.body.min_simularity;
+		const maxResults = req.body.max_results === undefined || req.body.max_results === null ? 10 :
+			req.body.max_results < 1 ? 1 :
+				req.body.max_results > 10 ? 10 :
+					req.body.max_results;
+		const results = await IQDB.query(file, maxResults);
+		if (results === "ERROR") return res.status(500).json(PostErrors.IQDB_ERROR);
+		const f = results.filter(r => r.score >= sim);
+		const posts = await Post.getBulk(f.map(p => p.post_id));
+		return res.status(200).json(await Promise.all(posts.map(async(p) => p.toJSON())));
 	});
 
 app.route("/upload")
