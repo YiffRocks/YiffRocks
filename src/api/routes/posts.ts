@@ -114,6 +114,7 @@ app.route("/find_similar")
 		const results = await IQDB.query(file, maxResults);
 		if (results === "ERROR") return res.status(500).json(PostErrors.IQDB_ERROR);
 		const f = results.filter(r => r.score >= sim);
+		if (f.length === 0) return res.status(200).json([]);
 		const posts = await Post.getBulk(f.map(p => p.post_id));
 		return res.status(200).json(await Promise.all(posts.map(async(p) => p.toJSON())));
 	});
