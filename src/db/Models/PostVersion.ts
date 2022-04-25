@@ -1,7 +1,6 @@
 import User from "./User";
 import Util from "../../util/Util";
 import db from "..";
-import type { PostVersionSearchOptions } from "../../logic/search/PostVersionSearch";
 import PostVersionSearch from "../../logic/search/PostVersionSearch";
 import { assert } from "tsafe";
 
@@ -150,9 +149,12 @@ export default class PostVersion implements PostVersionData {
 		return PostVersion.edit(this.id, data);
 	}
 
-	static async search(query: PostVersionSearchOptions, limit?: number, offset?: number) {
+	static async search(query: PostVersionSearch, limit: number | undefined, offset: number | undefined, idOnly: true): Promise<Array<number>>;
+	static async search(query: PostVersionSearch, limit?: number, offset?: number, idOnly?: false): Promise<Array<PostVersion>>;
+	static async search(query: PostVersionSearch, limit?: number, offset?: number, idOnly = false) {
 		const [sql, values] = await PostVersionSearch.constructQuery(query, limit, offset);
-		const { rows: res } = await db.query<PostVersionData>(sql, values);
+		const { rows: res } = await db.query<PostVersionData>(idOnly ? sql.replace(/p\.\*/, "p.id") : sql, values);
+		if (idOnly) return res.map(r => r.id);
 		return res.map(r => new PostVersion(r));
 	}
 

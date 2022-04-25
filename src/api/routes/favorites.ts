@@ -20,15 +20,18 @@ app.route("/")
 		post_id?: string;
 		limit?: string;
 		page?: string;
+		id_only?: string;
 	}>, res) => {
 		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
 		// if no search parameters given, return the authenticated users favorites
 		if (req.data.user && (req.query.user_id === undefined && req.query.user_name === undefined && req.query.post_id === undefined)) req.query.user_id = String(req.data.user.id);
+		const idOnly = Util.parseBoolean(req.query.id_only);
 		const searchResult = await Favorite.search({
 			user_id:   !req.query.user_id   ? undefined : Number(req.query.user_id),
 			user_name: !req.query.user_name ? undefined : req.query.user_name,
 			post_id:   !req.query.post_id   ? undefined : Number(req.query.post_id)
-		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset);
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset, idOnly as false);
+		if (idOnly) return res.status(200).json(searchResult);
 		return res.status(200).json(await Promise.all(searchResult.map(p => p.toJSON())));
 	});
 

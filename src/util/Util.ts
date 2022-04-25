@@ -90,10 +90,10 @@ export default class Util {
 		return Object.keys(value).filter((key) => (!~~key && key !== "0"));
 	}
 
-	static parseBoolean(str: string, exact: true): boolean | null;
-	static parseBoolean(str: string, exact?: false): boolean;
-	static parseBoolean(str: string, exact = true) {
-		return ["true", "yes", "y"].includes(str) ? true : !exact ? false : ["false", "no", "n"].includes(str) ? false : null;
+	static parseBoolean(str: string, exact: true, def?: boolean): boolean | null;
+	static parseBoolean(str?: string, exact?: false, def?: boolean): boolean;
+	static parseBoolean(str?: string, exact = true, def = false) {
+		return str === undefined || str === null ? def : ["true", "yes", "y"].includes(str) ? true : !exact ? false : ["false", "no", "n"].includes(str) ? false : null;
 	}
 
 	static parseWildcards(str: string) {

@@ -38,8 +38,10 @@ app.route("/")
 		reason?: string;
 		limit?: string;
 		page?: string;
+		id_only?: string;
 	}>, res) => {
 		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
+		const idOnly = Util.parseBoolean(req.query.id_only);
 		const searchResult = await PostVersion.search({
 			post_id:             !req.query.post_id   ? undefined : Number(req.query.post_id),
 			uploader_id:         !req.query.uploader_id   ? undefined : Number(req.query.uploader_id),
@@ -65,7 +67,8 @@ app.route("/")
 			title:               !req.query.title ? undefined : req.query.title,
 			old_title:           !req.query.old_title ? undefined : req.query.old_title,
 			reason:              !req.query.reason ? undefined : req.query.reason
-		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset);
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset, idOnly as false);
+		if (idOnly) return res.status(200).json(searchResult);
 		return res.status(200).json(await Promise.all(searchResult.map(p => p.toJSON())));
 	});
 

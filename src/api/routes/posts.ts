@@ -48,11 +48,13 @@ app.route("/")
 		limit?: string;
 		page?: string;
 		md5?: string;
+		id_only?: string;
 	}>, res) => {
 		if (req.query.md5) {
 			const file = await File.getByMD5(req.query.md5);
 			if (file === null) return res.status(404).json(PostErrors.NOT_FOUND_MD5);
 		}
+		const idOnly = Util.parseBoolean(req.query.id_only);
 		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
 		const searchResult = await Post.search({
 			uploader_id:   !req.query.uploader_id   ? undefined : Number(req.query.uploader_id),
@@ -69,11 +71,12 @@ app.route("/")
 			pools:         !req.query.pools         ? undefined : req.query.pools,
 			description:   !req.query.description   ? undefined : req.query.description,
 			title:         !req.query.title         ? undefined : req.query.title
-		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset);
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset, idOnly as false);
+		if (idOnly) return res.status(200).json(searchResult);
 		const posts = await Promise.all(searchResult.map(p => p.toJSON(false)));
 		if (posts.length === 0) return res.status(200).json([]);
 		const indexes = posts.map((p, index) => ({ [p.id]: index })).reduce((a, b) => ({ ...a, ...b }), {});
-		const { rows: files } = await db.query<FileData>(`SELECT * FROM files WHERE id = ANY(Array[${posts.map(p => p.files).reduce((a, b) => (a as Array<number>).concat(b as Array<number>), [] as Array<number>).join(", ")}])`);
+		const { rows: files } = await db.query<FileData>(`SELECT * FROM ${File.TABLE} WHERE id = ANY(Array[${posts.map(p => p.files).reduce((a, b) => (a as Array<number>).concat(b as Array<number>), [] as Array<number>).join(", ")}])`);
 		posts.forEach((p, index) => posts[index].files = []);
 		// delay fetching files until the end so we can bulk fetch them
 		// we can probably do better than this but this is what I came up with, and it

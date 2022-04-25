@@ -67,9 +67,12 @@ export default class Favorite implements FavoriteData {
 		return Util.genericEdit(Favorite, this.TABLE, id, data);
 	}
 
-	static async search(query: FavoriteSearchOptions, limit?: number, offset?: number) {
+	static async search(query: FavoriteSearchOptions, limit: number | undefined, offset: number | undefined, idOnly: true): Promise<Array<string>>;
+	static async search(query: FavoriteSearchOptions, limit?: number, offset?: number, idOnly?: false): Promise<Array<Favorite>>;
+	static async search(query: FavoriteSearchOptions, limit?: number, offset?: number, idOnly = false) {
 		const [sql, values] = await FavoriteSearch.constructQuery(query, limit, offset);
-		const { rows: res } = await db.query<FavoriteData>(sql, values);
+		const { rows: res } = await db.query<FavoriteData>(idOnly ? sql.replace(/f\.\*/, "f.id") : sql, values);
+		if (idOnly) return res.map(r => r.id);
 		return res.map(r => new Favorite(r));
 	}
 
@@ -81,9 +84,19 @@ export default class Favorite implements FavoriteData {
 	async getUser() { return User.get(this.user_id); }
 	async getPost() { return Post.get(this.post_id); }
 
-	async toJSON() {
-		const post = await this.getPost();
-		assert(post !== null, `null post for favorite #${this.id} (user: ${this.user_id}, post: ${this.post_id})`);
-		return post.toJSON();
+	async toJSON(includePostInfo = true) {
+		let postLike: {id: number; } | null;
+		if (includePostInfo) postLike = (await (await this.getPost())?.toJSON()) || null;
+		else {
+			const { rows: [{ id }] } = await db.query<{ id: number; }>("SELECT id FROM posts WHERE id = $1", [this.post_id]);
+			postLike = {
+				id
+			};
+		}
+		return {
+			created_at: this.created_at,
+			user_id:    this.user_id,
+			post:       postLike
+		};
 	}
 }

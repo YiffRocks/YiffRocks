@@ -111,9 +111,12 @@ export default class File implements FileData {
 		return res.map(r => new File(r));
 	}
 
-	static async search(query: FileSearchOptions, limit?: number, offset?: number) {
+	static async search(query: FileSearchOptions, limit: number | undefined, offset: number | undefined, idOnly: true): Promise<Array<number>>;
+	static async search(query: FileSearchOptions, limit?: number, offset?: number, idOnly?: false): Promise<Array<File>>;
+	static async search(query: FileSearchOptions, limit?: number, offset?: number, idOnly = false) {
 		const [sql, values] = await FileSearch.constructQuery(query, limit, offset);
-		const { rows: res } = await db.query<FileData>(sql, values);
+		const { rows: res } = await db.query<FileData>(idOnly ? sql.replace(/f\.\*/, "f.id") : sql, values);
+		if (idOnly) return res.map(r => r.id);
 		return res.map(r => new File(r));
 	}
 
