@@ -2,6 +2,8 @@ import Post from "./Post";
 import User from "./User";
 import db from "..";
 import Util from "../../util/Util";
+import type { FavoriteSearchOptions } from "../../logic/search/FavoriteSearch";
+import FavoriteSearch from "../../logic/search/FavoriteSearch";
 import { assert } from "tsafe";
 
 export interface FavoriteData {
@@ -63,6 +65,12 @@ export default class Favorite implements FavoriteData {
 
 	static async edit(id: string, data: Omit<Partial<FavoriteData>, "id">) {
 		return Util.genericEdit(Favorite, this.TABLE, id, data);
+	}
+
+	static async search(query: FavoriteSearchOptions, limit?: number, offset?: number) {
+		const [sql, values] = await FavoriteSearch.constructQuery(query, limit, offset);
+		const { rows: res } = await db.query<FavoriteData>(sql, values);
+		return res.map(r => new Favorite(r));
 	}
 
 	async edit(data: Omit<Partial<FavoriteData>, "id">) {
