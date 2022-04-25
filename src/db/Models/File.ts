@@ -2,6 +2,8 @@ import Post from "./Post";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
+import type { FileSearchOptions } from "../../logic/search/FileSearch";
+import FileSearch from "../../logic/search/FileSearch";
 import { assert } from "tsafe";
 
 export interface FileData {
@@ -12,7 +14,7 @@ export interface FileData {
 	md5: string;
 	// primary is reserved in sql
 	is_primary: boolean;
-	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	type: FileType;
 	mime: string;
 	ext: string;
 	width: number;
@@ -25,6 +27,10 @@ export interface FileData {
 export type FileCreationRequired = Pick<FileData, "post_id" | "md5" | "type" | "mime" | "ext" | "width" | "height" | "size">;
 export type FileCreationIgnored = "id" | "created_at" | "updated_at";
 export type FileCreationData = FileCreationRequired & Partial<Omit<FileData, keyof FileCreationRequired | FileCreationIgnored>>;
+export const FileTypes = [
+	"png", "apng", "jpg", "gif", "video", "unknown"
+];
+export type FileType = typeof FileTypes[number];
 
 
 export const FileFlags = {
@@ -41,7 +47,7 @@ export default class File implements FileData {
 	post_id: number;
 	md5: string;
 	is_primary: boolean;
-	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	type: FileType;
 	mime: string;
 	ext: string;
 	width: number;
@@ -104,6 +110,13 @@ export default class File implements FileData {
 		const { rows: res } = await db.query<FileData>(`SELECT * FROM ${this.TABLE} WHERE post_id = $1`, [id]);
 		return res.map(r => new File(r));
 	}
+
+	static async search(query: FileSearchOptions, limit?: number, offset?: number) {
+		const [sql, values] = await FileSearch.constructQuery(query, limit, offset);
+		const { rows: res } = await db.query<FileData>(sql, values);
+		return res.map(r => new File(r));
+	}
+
 	async edit(data: Omit<Partial<FileData>, "id">) {
 		Object.assign(this, Util.removeUndefinedKV(data));
 		return File.edit(this.id, data);

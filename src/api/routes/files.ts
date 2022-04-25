@@ -2,9 +2,41 @@
 import apiHeaders from "../../util/apiHeaders";
 import Post from "../../db/Models/Post";
 import { GeneralErrors, FileErrors } from "../../logic/errors/API";
+import Util from "../../util/Util";
+import type { FileType } from "../../db/Models/File";
+import File from "../../db/Models/File";
+import type { Request } from "express";
 import { Router } from "express";
 
 const app = Router();
+
+app.route("/")
+	.all(apiHeaders(["OPTIONS", "GET"]))
+	.get(async(req: Request<never, unknown, never, {
+		post_id?: string;
+		md5?: string;
+		is_primary?: string;
+		type?: FileType;
+		width?: string;
+		height?: string;
+		parent_id?: string;
+		size?: string;
+		limit?: string;
+		page?: string;
+	}>, res) => {
+		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
+		const searchResult = await File.search({
+			post_id:    !req.query.post_id   ? undefined : Number(req.query.post_id),
+			md5:        !req.query.md5   ? undefined : req.query.md5,
+			is_primary: !req.query.is_primary   ? undefined : Util.parseBoolean(req.query.is_primary),
+			type:       !req.query.type   ? undefined : req.query.type,
+			width:      !req.query.width   ? undefined : req.query.width,
+			height:     !req.query.height   ? undefined : req.query.height,
+			parent_id:  !req.query.parent_id   ? undefined : Number(req.query.parent_id),
+			size:       !req.query.size   ? undefined : req.query.size
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset);
+		return res.status(200).json(await Promise.all(searchResult.map(p => p.toJSON())));
+	});
 
 
 app

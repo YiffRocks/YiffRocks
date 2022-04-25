@@ -127,4 +127,15 @@ export default class Util {
 		const n = Number(val);
 		return isNaN(n) ? false : n;
 	}
+
+	static parseOperator(str: string) {
+		if (str.startsWith(">=")) return ["gteq", str.slice(2)] as const;
+		if (str.startsWith("<=")) return ["lteq", str.slice(2)] as const;
+		if (str.startsWith(">")) return ["gt", str.slice(1)] as const;
+		if (str.startsWith("<")) return ["lt", str.slice(1)] as const;
+		if (str.startsWith("=")) return ["eq", str.slice(1)] as const;
+		let match: RegExpMatchArray | null;
+		if ((match = /(\d+)\.\.(\d+)/.exec(str))) return ["range", match[1], match[2]] as const;
+		return ["eq", str] as const;
+	}
 }

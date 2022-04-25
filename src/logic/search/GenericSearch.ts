@@ -6,6 +6,18 @@ export default abstract class GenericSearch {
 		return [`${name} = ?`, value];
 	}
 
+	protected static searchWithOperator(name: string, value: string): [string, number] | [string, number, number] {
+		const [op, val1, val2] = Util.parseOperator(value);
+		switch (op) {
+			case "gteq": return [`${name} >= ?`, Number(val1)];
+			case "lteq": return [`${name} <= ?`, Number(val1)];
+			case "gt": return [`${name} > ?`, Number(val1)];
+			case "lt": return [`${name} < ?`, Number(val1)];
+			case "eq": return [`${name} = ?`, Number(val1)];
+			case "range": return [`${name} BETWEEN ? AND ?`, Number(val1), Number(val2)];
+		}
+	}
+
 	protected static async searchUserName(name: string, value: string): Promise<[string, string] | null> {
 		const id = await User.nameToID(value);
 		if (id !== null) return [`${name} = ?`, value];
