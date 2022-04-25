@@ -45,7 +45,7 @@ export default class PostSearch extends GenericSearch {
 
 	protected static async searchTags(value: string, initialLimit: [limit: number, offset: number], enableMeta = true, dbName = "tags") {
 		const n = dbName === "tags" ? "t" : `${dbName.slice(0, 1)}t`;
-		const res: Array<[string, unknown?] | null> = [];
+		const res: Array<[string, unknown?, unknown?] | null> = [];
 		const all = value.split(" ");
 		let extra = false, limit: number | undefined, offset: number | undefined, order: ReturnType<typeof PostSearch["formatOrder"]> | undefined;
 		const usedExtra: Array<string> = [];
@@ -71,16 +71,16 @@ export default class PostSearch extends GenericSearch {
 					case "user_id": if ((num = Util.isValidNum(name))) res.push(this.searchUploaderID(num)); break;
 					case "approver": res.push(await this.searchApproverName(name)); break;
 					case "approver_id": if ((num = Util.isValidNum(name))) res.push(this.searchApproverID(num)); break;
-					case "id": if ((num = Util.isValidNum(name))) res.push(["id = ?", num]); break;
+					case "id": res.push(this.searchWithOperator("id", name)); break;
 					case "parent":  if ((num = Util.isValidNum(name))) res.push(this.searchParentID(num)); break;
 					case "child": res.push(...this.searchChildren(name)); break;
 					case "rating": res.push(this.searchRatings(name as Ratings)); break;
 					case "lock": case "locked": res.push(this.searchRatingLocks(name as RatingLocks)); break;
-					case "score": if ((num = Util.isValidNum(name))) res.push(["score = ?", num]); break;
-					case "favcount": if ((num = Util.isValidNum(name))) res.push(["favorite_count = ?", num]); break;
-					case "commentcount": if ((num = Util.isValidNum(name))) res.push(["comment_count = ?", num]); break;
-					case "filesize": if ((num = Util.isValidNum(name))) res.push(["filesize = ?", num]); break;
-					case "duration": if ((num = Util.isValidNum(name))) res.push(["duration = ?", num]); break;
+					case "score": res.push(this.searchWithOperator("score", name)); break;
+					case "favcount": res.push(this.searchWithOperator("favorite_count", name)); break;
+					case "commentcount": res.push(this.searchWithOperator("comment_count", name)); break;
+					case "filesize": res.push(this.searchWithOperator("filesize", name)); break;
+					case "duration": res.push(this.searchWithOperator("duration", name)); break;
 					case "type": res.push(["type = ?", name]); break;
 					case "description": res.push(this.searchDescription(name)); break;
 					case "title": res.push(this.searchTitle(name)); break;
@@ -175,7 +175,7 @@ export default class PostSearch extends GenericSearch {
 	protected static searchTitle(value: string, name = "title") { return this.searchLike(name, value); }
 
 	static override async constructQuery(query: PostSearchOptions, limit?: number, offset?: number): Promise<[query: string, values: Array<unknown>]> {
-		const filters: Array<[string, unknown?] | null> = [];
+		const filters: Array<[sql: string, ...values: Array<unknown>] | null> = [];
 		const selectExtra: Array<string> = [];
 		let order: string | undefined;
 		if (query.uploader_id && !isNaN(query.uploader_id)) filters.push(this.searchUploaderID(query.uploader_id));
@@ -215,7 +215,9 @@ export default class PostSearch extends GenericSearch {
 		if (query.title)         filters.push(this.searchTitle(query.title));
 		let index = 0;
 		const statements = filters.filter(Boolean).map(f => f![0].replace(/\?/g, () => `$${++index}`));
-		const values = filters.filter((v) => Boolean(v && v[1])).map(f => f![1]);
+		const values: Array<unknown> = [];
+		const f = filters.filter(v => v !== null) as Array<Exclude<typeof filters[number], null>>;
+		for (const [,...val] of f) val.forEach(v => v !== undefined && v !== null ? values.push(v) : null);
 
 		if (!order) order = "ORDER BY id DESC";
 		return [`SELECT p.* FROM ${Post.TABLE} p${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`}${!order ? "" : ` ${order}`} LIMIT ${limit || Config.defaultPostLimit} OFFSET ${offset || 0}`, values];

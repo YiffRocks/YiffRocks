@@ -3,6 +3,7 @@ import PostVersion from "./PostVersion";
 import PostVote from "./PostVote";
 import Favorite from "./Favorite";
 import Tag, { FunctionalMetaTags, TagCategories, TagCategoryNames } from "./Tag";
+import type { FileType } from "./File";
 import File from "./File";
 import db from "..";
 import Util from "../../util/Util";
@@ -44,7 +45,7 @@ export interface PostData {
 	description: string;
 	title: string;
 	duration: number | null;
-	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	type: FileType;
 	// stats
 	score_up: number;
 	score_down: number;
@@ -107,7 +108,7 @@ export default class Post implements PostData {
 	title: string;
 	comment_count: number;
 	duration: number | null;
-	type: "png" | "apng" | "jpg" | "gif" | "video" | "unknown";
+	type: FileType;
 	// stats
 	score_up: number;
 	score_down: number;

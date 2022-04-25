@@ -38,7 +38,7 @@ export default class PostVersionSearch extends PostSearch {
 	}
 
 	static override async constructQuery(query: PostVersionSearchOptions, limit?: number, offset?: number): Promise<[query: string, values: Array<unknown>]> {
-		const filters: Array<[string, unknown?] | null> = [];
+		const filters: Array<[sql: string, ...values: Array<unknown>] | null> = [];
 		const selectExtra: Array<string> = [];
 		let order: string | undefined;
 		if (query.post_id && !isNaN(query.post_id)) filters.push(this.searchPostID(query.post_id));
@@ -109,7 +109,9 @@ export default class PostVersionSearch extends PostSearch {
 		if (query.reason) filters.push(this.searchReason(query.reason));
 		let index = 0;
 		const statements = filters.filter(Boolean).map(f => f![0].replace(/\?/g, () => `$${++index}`));
-		const values = filters.filter((v) => Boolean(v && v[1])).map(f => f![1]);
+		const values: Array<unknown> = [];
+		const f = filters.filter(v => v !== null) as Array<Exclude<typeof filters[number], null>>;
+		for (const [,...val] of f) val.forEach(v => v !== undefined && v !== null ? values.push(v) : null);
 
 		if (!order) order = "ORDER BY id DESC";
 		return [`SELECT p.* FROM ${PostVersion.TABLE} p${selectExtra.length === 0 ? "" : `, ${selectExtra.join(", ")}`}${statements.length === 0 ? "" : ` WHERE ${statements.join(" AND ")}`}${!order ? "" : ` ${order}`} LIMIT ${limit || Config.defaultPostLimit} OFFSET ${offset || 0}`, values];
