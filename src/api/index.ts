@@ -3,8 +3,11 @@
 /// <reference path="../util/@types/express-session.d.ts" />
 import Config from "../config/index";
 import User from "../db/Models/User";
+import ErrorHandler from "../logic/ErrorHandler";
+import type { NextFunction, Request, Response } from "express";
 import express from "express";
 import morgan from "morgan";
+import { format } from "util";
 const app = express();
 
 app
@@ -30,8 +33,21 @@ app
 	.use("/posts", (await import("./routes/posts")).default)
 	.use("/tag_versions", (await import("./routes/tag_versions")).default)
 	.use("/tags", (await import("./routes/tags")).default)
-	.use("/users", (await import("./routes/users")).default);
+	.use("/users", (await import("./routes/users")).default)
+	.use(async(err: Error, req: Request, res: Response, next: NextFunction) => {
+		const h = await ErrorHandler.handle("Router Error", err);
+		if (res.headersSent) return next(err);
+		return res.status(500).json({
+			error: "Internal Server Error",
+			code:  500,
+			log:   h
+		});
+	});
 
 if (Config.isDevelopment) app.use("/data", express.static(`${Config.tmpDir}/public`));
 
 app.listen(Config.apiPort, Config.apiHost, () => console.log("Listening on http://%s:%s", Config.apiHost, Config.apiPort));
+
+process
+	.on("uncaughtException", (err) => ErrorHandler.handle("Uncaught Exception", err))
+	.on("unhandledRejection", (err) => err instanceof Error ? ErrorHandler.handle("Unhandled Rejection", err) : ErrorHandler.handle("unhandledRejection", format(err), new Error()));
