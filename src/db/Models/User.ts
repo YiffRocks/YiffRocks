@@ -4,10 +4,13 @@ import Post from "./Post";
 import db from "..";
 import Util from "../../util/Util";
 import Config from "../../config";
+import type IHasStats from "../../util/@types/IHasStats";
+import type CurrentUser from "../../logic/CurrentUser";
 import { assert } from "tsafe";
 import bcrypt from "bcrypt";
 import { createHash } from "crypto";
 
+export type UserLike = User | CurrentUser;
 export type UserStats = Record<
 "artist_change_count" | "comment_count" | "flag_count" |
 "note_change_count" | "pool_change_count" | "post_change_count" |
@@ -89,7 +92,7 @@ export enum UserLevels {
 	ADMIN     = 22
 }
 
-export default class User implements UserData {
+export default class User implements UserData, IHasStats<keyof UserStats> {
 	static TABLE = "users";
 	id: number;
 	name: string;
@@ -208,6 +211,34 @@ export default class User implements UserData {
 		const { rows: [res] } = await db.query<{ id: number; }>(`SELECT id FROM ${this.TABLE} WHERE name = $1`, [name]);
 		return !res ? null : res.id;
 	}
+
+	static async addFlag(user: number, current: number, flag: number) {
+		await User.edit(user, { flags: current | flag });
+		return current | flag;
+	}
+
+	static async removeFlag(user: number, current: number, flag: number) {
+		await User.edit(user, { flags: current & ~flag });
+		return current & ~flag;
+	}
+
+	static async incrementStat(user: number, current: number, type: keyof UserStats) { return this.setStat(user, type, current + 1); }
+	static async decrementStat(user: number, current: number, type: keyof UserStats) { return this.setStat(user, type, current - 1); }
+	static async setStat(user: number, type: keyof UserStats, value: number) {
+		await User.edit(user, { [type]: value });
+		return value;
+	}
+
+	static isLevel(current: UserLevels, level: UserLevels) {
+		return current === level;
+	}
+	static isLevelAtLeast(current: UserLevels, level: UserLevels, inclusive = true) {
+		return inclusive ? current >= level : current > level;
+	}
+	static isLevelAtMost(current: UserLevels, level: UserLevels, inclusive = true) {
+		return inclusive ? current <= level : current < level;
+	}
+
 	// flags
 	get parsedFlags() {
 		return Object.entries(UserFlags).map(([key, value]) => ({ [key]: (this.flags & value) === value })).reduce((a, b) => ({ ...a, ...b }), {}) as Record<keyof typeof UserFlags, boolean>;
@@ -229,24 +260,6 @@ export default class User implements UserData {
 	get isFeedbackDisabled() { return Util.checkFlag(UserFlags.NO_FEEDBACK, this.flags); }
 	get hasUnreadMail() { return Util.checkFlag(UserFlags.HAS_MAIL, this.flags); }
 	get isVerified() { return Util.checkFlag(UserFlags.VERIFIED, this.flags); }
-
-	async addFlag(flag: number) {
-		if ((this.flags & flag) === 0) return this;
-		await this.edit({
-			flags: this.flags | flag
-		});
-		this.flags = this.flags | flag;
-		return this;
-	}
-
-	async removeFlag(flag: number) {
-		if ((this.flags & flag) !== 0) return this;
-		await this.edit({
-			flags: this.flags - flag
-		});
-		this.flags = this.flags - flag;
-		return this;
-	}
 
 	// settings
 	get parsedSettings() {
@@ -300,17 +313,9 @@ export default class User implements UserData {
 	get isAdmin() { return this.isLevel(UserLevels.ADMIN); }
 	get isAtMostAdmin() { return this.isLevelAtMost(UserLevels.ADMIN); }
 
-	isLevel(level: UserLevels) {
-		return this.level === level;
-	}
-
-	isLevelAtLeast(level: UserLevels, inclusive = true) {
-		return inclusive ? this.level >= level : this.level > level;
-	}
-
-	isLevelAtMost(level: UserLevels, inclusive = true) {
-		return inclusive ? this.level <= level : this.level < level;
-	}
+	get isLevel() { return User.isLevel.bind(User, this.id); }
+	get isLevelAtLeast() { return User.isLevelAtLeast.bind(User, this.id); }
+	get isLevelAtMost() { return User.isLevelAtMost.bind(User, this.id); }
 
 	// other
 	async trackIPAddress(address: string) {
@@ -337,46 +342,14 @@ export default class User implements UserData {
 		return this;
 	}
 
-	async incrementStat(type: keyof UserStats) {
-		this[type] = this[type] + 1;
-		await this.edit({ [type]: this[type] });
-		return this[type];
-	}
+	async incrementStat(type: keyof UserStats) { return User.incrementStat.call(User, this.id, this[type], type); }
+	async decrementStat(type: keyof UserStats) { return User.decrementStat.call(User, this.id, this[type], type); }
+	get setStat() { return User.setStat.bind(User, this.id); }
 
-	async decrementStat(type: keyof UserStats) {
-		this[type] = this[type] - 1;
-		await this.edit({ [type]: this[type] });
-		return this[type];
-	}
-
-	async setStat(type: keyof UserStats, value: number) {
-		this[type] = value;
-		await this.edit({ [type]: this[type] });
-		return this[type];
-	}
-
-	get apiBurstLimit() {
-		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 120;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 90;
-		else return 60;
-	}
-
-	get apiRegenMultiplier() {
-		return 1;
-	}
-
-	get statementTimeout() {
-		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 9_000;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 6_000;
-		else return 3_000;
-	}
-
-	get tagQueryLimit() {
-		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 60;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 50;
-		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 40;
-		else return 20;
-	}
+	get apiBurstLimit() { return Config.apiBurstLimit(this); }
+	get apiRegenMultiplier() { return Config.apiRegenMultiplier(this); }
+	get statementTimeout() { return Config.statementTimeout(this); }
+	get tagQueryLimit() { return Config.tagQueryLimit(this); }
 
 	get gravatarHash() {
 		return this.email === null ? null : createHash("md5").update(this.email).digest("hex");
@@ -395,13 +368,7 @@ export default class User implements UserData {
 	}
 
 	// favorites
-	get favoriteLimit() {
-		if (this.isLevelAtLeast(UserLevels.JANITOR)) return 150_000;
-		else if (this.isLevelAtLeast(UserLevels.FORMER_STAFF)) return 100_000;
-		else if (this.isLevelAtLeast(UserLevels.PRIVILEGED)) return 75_000;
-		else if (this.isLevelAtLeast(UserLevels.MEMBER)) return 50_000;
-		else return 0;
-	}
+	get favoriteLimit() { return Config.favoriteLimit(this); }
 
 	async getFavorites() { return Favorite.getForUser(this.id); }
 
@@ -431,6 +398,8 @@ export default class User implements UserData {
 
 	async getPostVotes() { return PostVote.getForUser(this.id); }
 
+	get addFlag() { return User.addFlag.bind(this.id); }
+	get removeFlag() { return User.removeFlag.bind(this.id); }
 
 	toJSON(type?: "public" | "self") {
 		const publicInfo = {

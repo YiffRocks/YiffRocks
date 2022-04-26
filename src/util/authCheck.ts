@@ -6,9 +6,9 @@ import type { NextFunction, Request, Response } from "express";
 
 export default function authCheck(responseType: "json" | "html", requiredLevel = UserLevels.MEMBER) {
 	return (async (req: Request, res: Response, next: NextFunction) => {
-		if (!req.data.user && Config.isDevelopment) req.data.user = await User.get(1) as User;
+		if (!req.data.user.isPresent && Config.isDevelopment) req.data.user.setUser(await User.get(1) as User);
 
-		if (!req.data.user) {
+		if (!req.data.user.isPresent) {
 			if (responseType === "json") return res.status(401).json(GeneralErrors.AUTH_REQUIRED);
 			else return res.redirect(`/login?url=${req.originalUrl}&authFail=true`);
 		} else if (!req.data.user.isLevelAtLeast(requiredLevel)) {

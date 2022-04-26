@@ -1,3 +1,4 @@
+import type { UserLike } from "./User";
 import User from "./User";
 import PostVersion from "./PostVersion";
 import PostVote from "./PostVote";
@@ -356,7 +357,7 @@ export default class Post implements PostData {
 		return res.map(r => new Post(r));
 	}
 
-	async setTags(user: User, ipAddress: string | null, data: string, initial = false) {
+	async setTags(user: UserLike, ipAddress: string | null, data: string, initial = false) {
 		const tags = data.split(" ");
 		const finalTags: Array<string> = [], negatedTags: Array<string> = [];
 		const errors: Array<string> = [];

@@ -5,6 +5,7 @@ import "../util/init-aliases";
 import ErrorHandler from "../logic/ErrorHandler";
 import User from "../db/Models/User";
 import Config from "../config/index";
+import CurrentUser from "../logic/CurrentUser";
 import type { NextFunction, Request, Response } from "express";
 import express from "express";
 import morgan from "morgan";
@@ -19,11 +20,13 @@ app
 	.use(morgan("dev"))
 	.use(Config.sharedSession)
 	.use(async(req, res, next) => {
-		if (!req.data) req.data = {};
+		req.data = {
+			user: new CurrentUser()
+		};
 		if (req.session && req.session.userID) {
 			const user = await User.get(req.session.userID);
 			if (user === null) req.session.userID = undefined;
-			else req.data.user = user;
+			else req.data.user.setUser(user);
 		}
 
 		return next();

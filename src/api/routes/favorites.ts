@@ -38,7 +38,6 @@ app.route("/")
 app.route("/:id")
 	.all(apiHeaders(["OPTIONS", "GET"]), authCheck("json"))
 	.get(async(req, res) => {
-		assert(req.data.user !== undefined, "undefined user");
 		const id = Number(req.params.id);
 		if (isNaN(id)) return res.status(400).json(GeneralErrors.INVALID_ID);
 		if (req.data.user.id === id) return res.status(200).json((await req.data.user.getFavorites()).map(v => v.toJSON()));
@@ -51,7 +50,6 @@ app.route("/:id")
 app.route("/add/:id")
 	.all(apiHeaders(["OPTIONS", "PUT"]), authCheck("json"))
 	.put(async(req, res) => {
-		assert(req.data.user !== undefined, "undefined user");
 		const id = Number(req.params.id);
 		if (isNaN(id)) return res.status(400).json(GeneralErrors.INVALID_ID);
 		const post = await Post.get(id);

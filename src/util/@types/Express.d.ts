@@ -1,10 +1,10 @@
-import type User from "../../db/Models/User";
+import type CurrentUser from "../../logic/CurrentUser";
 
 declare global {
 	namespace Express {
 		interface Request {
 			data: {
-				user?: User;
+				user: CurrentUser;
 			};
 		}
 	}
