@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/triple-slash-reference */
 /// <reference path="../util/@types/Express.d.ts" />
 /// <reference path="../util/@types/express-session.d.ts" />
-import Config from "../config/index";
-import User from "../db/Models/User";
+import "../util/init-aliases";
 import ErrorHandler from "../logic/ErrorHandler";
+import User from "../db/Models/User";
+import Config from "../config/index";
 import type { NextFunction, Request, Response } from "express";
 import express from "express";
 import morgan from "morgan";
