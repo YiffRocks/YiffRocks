@@ -6,7 +6,6 @@
     "strictPropertyInitialization": true,
     "skipLibCheck": true,
     "inlineSourceMap": true,
-    "paths": {},
     "moduleResolution": "node",
     "esModuleInterop": true,
     "module": "esnext"

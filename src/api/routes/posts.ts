@@ -67,7 +67,7 @@ app.route("/")
 			rating:        !req.query.rating        ? undefined : req.query.rating,
 			rating_lock:   !req.query.rating_lock   ? undefined : req.query.rating_lock,
 			parent_id:     !req.query.parent_id     ? undefined : Number(req.query.parent_id),
-			children:      !req.query.children     ? undefined : req.query.children,
+			children:      !req.query.children      ? undefined : req.query.children,
 			pools:         !req.query.pools         ? undefined : req.query.pools,
 			description:   !req.query.description   ? undefined : req.query.description,
 			title:         !req.query.title         ? undefined : req.query.title

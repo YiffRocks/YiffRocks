@@ -1,8 +1,10 @@
+import Config from "../../config";
 import User from "../../db/Models/User";
 import Util from "../../util/Util";
 
 export default abstract class GenericSearch {
 	protected static genericSearch<T extends string | number | boolean | null>(name: string, value: T): [string, T] {
+		if (typeof value === "string" && value.includes(Config.wildcardCharacter)) value = Util.parseWildcards(value) as T;
 		return [`${name} = ?`, value];
 	}
 

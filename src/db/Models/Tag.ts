@@ -2,6 +2,8 @@ import TagVersion from "./TagVersion";
 import type { CountResult } from "..";
 import db from "..";
 import Util from "../../util/Util";
+import type { TagSearchOptions } from "../../logic/search/TagSearch";
+import TagSearch from "../../logic/search/TagSearch";
 import { assert } from "tsafe";
 
 export interface TagData {
@@ -186,6 +188,15 @@ export default class Tag implements TagData {
 		const name = n.join(":");
 		if (validMeta.includes(meta)) return [meta, name];
 		else return [null, tag];
+	}
+
+	static async search(query: TagSearchOptions, limit: number | undefined, offset: number | undefined, idOnly: true): Promise<Array<number>>;
+	static async search(query: TagSearchOptions, limit?: number, offset?: number, idOnly?: false): Promise<Array<Tag>>;
+	static async search(query: TagSearchOptions, limit?: number, offset?: number, idOnly = false) {
+		const [sql, values] = await TagSearch.constructQuery(query, limit, offset);
+		const { rows: res } = await db.query<TagData>(idOnly ? sql.replace(/t\.\*/, "t.id") : sql, values);
+		if (idOnly) return res.map(r => r.id);
+		return res.map(r => new Tag(r));
 	}
 
 	async edit(data: Omit<Partial<TagData>, "id">) {

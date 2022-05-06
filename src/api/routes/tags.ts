@@ -3,10 +3,36 @@ import apiHeaders from "../../util/apiHeaders";
 import { GeneralErrors, TagErrors } from "../../logic/errors/API";
 import Tag from "../../db/Models/Tag";
 import TagVersion from "../../db/Models/TagVersion";
+import Util from "../../util/Util";
+import type { Request } from "express";
 import { Router } from "express";
 
 const app = Router();
 
+app.route("/")
+	.all(apiHeaders(["OPTIONS", "GET"]))
+	.get(async(req: Request<never, unknown, never, {
+		name?: string;
+		category?: string;
+		post_count?: string;
+		locked?: string;
+		limit?: string;
+		page?: string;
+		id_only?: string;
+	}>, res) => {
+		const idOnly = Util.parseBoolean(req.query.id_only);
+		const [limit, offset] = Util.parseLimit(req.query.limit, req.query.page);
+		const searchResult = await Tag.search({
+			name:       !req.query.name         ? undefined : req.query.name,
+			category:   !req.query.category     ? undefined : Number(req.query.category),
+			post_count: !req.query.post_count   ? undefined : req.query.post_count,
+			locked:     !req.query.locked       ? undefined : Util.parseBoolean(req.query.locked)
+		}, !req.query.limit ? undefined : limit, !req.query.page ? undefined : offset, idOnly as false);
+		if (idOnly) return res.status(200).json(searchResult);
+		const tags = await Promise.all(searchResult.map(p => p.toJSON()));
+		if (tags.length === 0) return res.status(200).json([]);
+		return res.status(200).json(tags);
+	});
 
 app
 	.route("/:idOrName")
